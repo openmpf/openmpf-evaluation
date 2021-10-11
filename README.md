@@ -51,8 +51,14 @@ execute jobs using pre-built OpenMPF Docker images, such as those on [Docker Hub
 
 ### Quick Start
 
-TODO: Provide steps for setting up and running the framework. Provide a concrete example of generating metrics on a face
-detection algorithm.
+To run the evaluation framework run:
+
+`python3 evaluation_framework.py <docker-image-name-with-registry-and-tag> <path-to-media-file>`
+
+For example, to run OCV face detection on the sample image file, run:
+
+`python3 evaluation_framework.py openmpf_ocv_face_detection:latest /home/mpf/openmpf-projects/openmpf-evaluation/data/meds-af-S419-01_40deg.jpg`
+
 
 ## Project Website
 
