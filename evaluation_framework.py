@@ -24,23 +24,23 @@
 # limitations under the License.                                            #
 #############################################################################
 
+import argparse
 import json
 import subprocess
 import shlex
 from datetime import datetime
-import sys
 from typing import Dict, Any, List
 
 
 def main():
-    _, container_image_name, media_file = sys.argv
+    args = parse_cmd_line_args()
 
     detection_type = "FACE"
 
-    container_id = set_up_container(container_image_name)
+    container_id = set_up_container(args.docker_image)
 
     start_time = datetime.now()
-    output_obj = run_cli_runner_stdin_media(container_id, media_file, '-t', 'image', '-')
+    output_obj = run_cli_runner_stdin_media(container_id, args.media_path, '-t', 'image', '-')
     end_time = datetime.now()
 
     tracks = get_image_tracks(output_obj, detection_type)
@@ -51,24 +51,28 @@ def main():
     print("Run time: ", str(end_time - start_time))
 
 
-def set_up_container(full_image_name):
-    command = ('docker', 'run', '--rm', '-d', full_image_name, '-d')
+def set_up_container(image_name: str):
+    command = ('docker', 'run', '--rm', '-d', image_name, '-d')
     print('Starting test container with command: ', shlex.join(command))
     proc = subprocess.run(command, stdout=subprocess.PIPE, text=True, check=True)
     return proc.stdout.strip()
 
 
-def shut_down_container(container_id):
+def shut_down_container(container_id: str):
     command = ('docker', 'stop', container_id)
     print('Stopping test container with command: ', shlex.join(command))
     subprocess.run(command, check=True)
 
 
-def run_cli_runner_stdin_media(container_id, media_path: str, *runner_args: str) -> Dict[str, Any]:
+def run_cli_runner_stdin_media(container_id: str,
+                               media_path: str,
+                               *runner_args: str) -> Dict[str, Any]:
     return run_cli_runner_stdin_media_and_env_vars(container_id, media_path, {}, *runner_args)
 
 
-def run_cli_runner_stdin_media_and_env_vars(container_id, media_path: str, env_dict: Dict[str, str],
+def run_cli_runner_stdin_media_and_env_vars(container_id: str,
+                                            media_path: str,
+                                            env_dict: Dict[str, str],
                                             *runner_args: str) -> Dict[str, Any]:
     env_params = (f'-e{k}={v}' for k, v in env_dict.items())
     command = ['docker', 'exec', '-i', *env_params, container_id, 'runner', *runner_args]
@@ -82,13 +86,26 @@ def run_cli_runner_stdin_media_and_env_vars(container_id, media_path: str, env_d
 
 def get_image_tracks(
         output_object: Dict[str, Any],
-        detection_type) -> List[Dict[str, Any]]:
-
+        detection_type: str) -> List[Dict[str, Any]]:
     return get_tracks(output_object, detection_type)
 
 
-def get_tracks(output_object: Dict[str, Any], detection_type) -> List[Dict[str, Any]]:
+def get_tracks(
+        output_object: Dict[str, Any],
+        detection_type: str) -> List[Dict[str, Any]]:
     return output_object['media'][0]['output'][detection_type][0]['tracks']
+
+
+def parse_cmd_line_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('docker_image',
+                        help='Docker image name with registry and tag.')
+
+    parser.add_argument('media_path',
+                        help='Path to media to process.')
+
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
