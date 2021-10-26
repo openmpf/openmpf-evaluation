@@ -53,12 +53,73 @@ execute jobs using pre-built OpenMPF Docker images, such as those on [Docker Hub
 
 To run the evaluation framework run:
 
-`python3 evaluation_framework.py <docker-image-name-with-registry-and-tag> <path-to-media-file>`
+`python3 evaluation_framework.py <docker-image-name-with-registry-and-tag> <path-to-media-file-or-dir>`
 
 For example, to run OCV face detection on the sample image file, run:
 
 `python3 evaluation_framework.py openmpf_ocv_face_detection:latest /home/mpf/openmpf-projects/openmpf-evaluation/data/meds-af-S419-01_40deg.jpg`
 
+
+### Running with Multiple Docker Images
+
+This component will also accept multiple docker images with customized job parameters and can process image directories
+using a job JSON file in place of a single docker image input:
+
+`python3 evaluation_framework.py <docker-job-json-file> <path-to-media-file-or-dir>`
+
+For example:
+
+`python3 evaluation_framework.py ./sample_jobs.json ./data/images`
+
+### Job JSON File Overview:
+Each custom JSON job file should be organized as follows:
+- All job runs should be stored in the `jobRuns` array.
+  Each job run is a JSON object with the following three fields:
+    - `jobName` : Specifies name of particular job run. All `jobNames` in this JSON file must be unique.
+    - `dockerImage`: Specifies Docker image and registry tag. The same image can be reused across job run objects.
+    - `jobParameters`: A JSON object containing custom job parameters for the associated OpenMPF docker component.
+
+As mentioned, users can specify the same Docker image for multiple job runs. The component will initialize
+a Docker container for each unique image listed across the job JSON file and reuse them as needed.
+
+Example Job JSON below:
+```
+{
+    "jobRuns": [
+        {
+            "jobName": "<Docker_Image_1_Run_Name>",
+            "dockerImage": "<openmpf_docker_image_1>:<image_version>"
+        },
+        {
+            "jobName": "<Docker_Image_1_With_Custom_Parameters>",
+            "dockerImage": "<openmpf_docker_image_1>:<image_version>"
+            "jobParameters": {
+                "<SAMPLE_PARAMETER_1>": "<input_parameter>",
+            }
+        },
+                {
+            "jobName": "<Docker_Image_n_Run_Name>",
+            "dockerImage": "<openmpf_docker_image_n>:<image_version>"
+            "jobParameters": {
+                "<SAMPLE_PARAMETER_1>": "<input_parameter>",
+            }
+        },
+    ]
+}
+```
+
+### Storing Results and Viewing Labels on FiftyOne:
+
+To store the output JSON labels into a custom labels folder, add the following parameter to the job run:
+`--out <output_label_dir>`
+
+The outputs JSONs will be directed to `<output_label_dir>/<job_run_with_timestamp_dir>` under unique subdirectories
+referencing the individual `jobRun` names and ending timestamps.
+
+To view these results using the FiftyOne application add the following parameter:
+"--view-fiftyone`
+
+This will open the FiftyOne app which can be viewed in an open browser at `localhost:5151` by default.
 
 ## Project Website
 
