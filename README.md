@@ -77,7 +77,7 @@ Each custom JSON job file should be organized as follows:
   Each job run is a JSON object with the following three fields:
     - `jobName` : Specifies name of particular job run. All `jobNames` in this JSON file must be unique.
     - `dockerImage`: Specifies Docker image and registry tag. The same image can be reused across job run objects.
-    - `jobParameters`: A JSON object containing custom job parameters for the associated OpenMPF docker component.
+    - `jobProperties`: A JSON object containing custom job properties for the associated OpenMPF docker component.
 
 As mentioned, users can specify the same Docker image for multiple job runs. The component will initialize
 a Docker container for each unique image listed across the job JSON file and reuse them as needed.
@@ -93,14 +93,14 @@ Example Job JSON below:
         {
             "jobName": "<Docker_Image_1_With_Custom_Parameters>",
             "dockerImage": "<openmpf_docker_image_1>:<image_version>"
-            "jobParameters": {
+            "jobProperties": {
                 "<SAMPLE_PARAMETER_1>": "<input_parameter>",
             }
         },
                 {
             "jobName": "<Docker_Image_n_Run_Name>",
             "dockerImage": "<openmpf_docker_image_n>:<image_version>"
-            "jobParameters": {
+            "jobProperties": {
                 "<SAMPLE_PARAMETER_1>": "<input_parameter>",
             }
         },
