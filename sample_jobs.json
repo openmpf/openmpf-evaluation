@@ -8,8 +8,7 @@
             "jobName": "Modified_OCV_Face_Detection_Run",
             "dockerImage": "openmpf_ocv_face_detection:latest",
             "jobParameters": {
-                "MIN_INITIAL_CONFIDENCE": "1",
-                "VERBOSE": "1"
+                "MIN_INITIAL_CONFIDENCE": "1"
             }
         }
     ]

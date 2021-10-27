@@ -201,8 +201,8 @@ class EvalFramework:
                                                  job_params_dict: Dict[str, str],
                                                  *runner_args: str) -> Dict[str, Any]:
 
-        env_params = (f'-e {k}={v}' for k, v in env_dict.items())
-        job_params = (f'-P {k}={v}' for k, v in job_params_dict.items())
+        env_params = (f'-e{k}={v}' for k, v in env_dict.items())
+        job_params = (f'-P{k}={v}' for k, v in job_params_dict.items())
         command = ['docker', 'exec', '-i', *env_params, container_id, 'runner', *runner_args, *job_params]
         print('Running job with command: ', shlex.join(command))
 
