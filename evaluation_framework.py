@@ -39,7 +39,7 @@ class EvalFramework:
     EVAL_JSON_JOB_RUNS = "jobRuns"
     EVAL_JSON_JOB_NAME = "jobName"
     EVAL_JSON_DOCKER_IMAGE = "dockerImage"
-    EVAL_JSON_JOB_PARAMS = "jobParameters"
+    EVAL_JSON_JOB_PROPS = "jobProperties"
 
     def __init__(self,
                  docker_job_json: Dict = {},
@@ -79,10 +79,10 @@ class EvalFramework:
             job_name = job_entry[self.EVAL_JSON_JOB_NAME]
             docker_image = job_entry[self.EVAL_JSON_DOCKER_IMAGE]
 
-            job_params_dict = job_entry.get(self.EVAL_JSON_JOB_PARAMS, {})
+            job_props_dict = job_entry.get(self.EVAL_JSON_JOB_PROPS, {})
 
             container_id = self.container_dict[docker_image.strip()]
-            self._process_images(job_name, job_params_dict, container_id)
+            self._process_images(job_name, job_props_dict, container_id)
 
     def launch_fiftyone_session(self):
         """
@@ -121,12 +121,14 @@ class EvalFramework:
 
     def _process_images(self,
                         job_name: str,
-                        job_params_dict: Dict[str, str],
+                        job_props_dict: Dict[str, str],
                         container_id: str):
         if len(self.dataset) > 1:
             print("Found {} images.".format(len(self.dataset)))
 
         index = 0
+
+        dataset_start_time = datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p")
 
         for image_sample in self.dataset:
             image = image_sample.filepath
@@ -134,7 +136,7 @@ class EvalFramework:
             print("\nProcessing image {}: {}".format(index, image))
             start_time = datetime.now()
             output_obj = self._run_cli_runner_stdin_media(container_id,
-                                                          job_params_dict,
+                                                          job_props_dict,
                                                           image,
                                                           '-t', 'image', '-')
             end_time = datetime.now()
@@ -151,7 +153,7 @@ class EvalFramework:
                 image_sample.save()
 
             if self.output_dir is not None:
-                out_dir = os.path.join(self.output_dir, job_name + "_" + end_time.strftime("%Y_%m_%d-%I_%M_%S_%p"))
+                out_dir = os.path.join(self.output_dir, job_name + "_" + dataset_start_time)
                 os.makedirs(out_dir, exist_ok=True)
                 output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(image))[0])
                 with open('{}.json'.format(output_path), 'w') as fp:
@@ -185,25 +187,25 @@ class EvalFramework:
 
     def _run_cli_runner_stdin_media(self,
                                     container_id: str,
-                                    job_params_dict: Dict[str, str],
+                                    job_props_dict: Dict[str, str],
                                     media_path: str,
                                     *runner_args: str) -> Dict[str, Any]:
         return self._run_cli_runner_stdin_media_and_env_vars(container_id,
                                                              media_path,
                                                              {},
-                                                             job_params_dict,
+                                                             job_props_dict,
                                                              *runner_args)
 
     @staticmethod
     def _run_cli_runner_stdin_media_and_env_vars(container_id: str,
                                                  media_path: str,
                                                  env_dict: Dict[str, str],
-                                                 job_params_dict: Dict[str, str],
+                                                 job_props_dict: Dict[str, str],
                                                  *runner_args: str) -> Dict[str, Any]:
 
         env_params = (f'-e{k}={v}' for k, v in env_dict.items())
-        job_params = (f'-P{k}={v}' for k, v in job_params_dict.items())
-        command = ['docker', 'exec', '-i', *env_params, container_id, 'runner', *runner_args, *job_params]
+        job_props = (f'-P{k}={v}' for k, v in job_props_dict.items())
+        command = ['docker', 'exec', '-i', *env_params, container_id, 'runner', *runner_args, *job_props]
         print('Running job with command: ', shlex.join(command))
 
         with open(media_path) as media_file, \
@@ -249,7 +251,7 @@ def main():
                                                               "run_{}".format(job_name),
                                                               EvalFramework.EVAL_JSON_DOCKER_IMAGE:
                                                               args.docker_image_json,
-                                                              EvalFramework.EVAL_JSON_JOB_PARAMS:
+                                                              EvalFramework.EVAL_JSON_JOB_PROPS:
                                                               {}}]
     evaluator = EvalFramework(docker_job_list, args.label_type, args.out, args.view_fiftyone)
     evaluator.process_image_jobs(image_list)
@@ -259,7 +261,7 @@ def main():
 
 def parse_cmd_line_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-
+    # TODO: Swap between display only mode and live jobs
     parser.add_argument('docker_image_json',
                         help='JSON file listing Docker image names with registry, tag information, '
                              'and associated job parameters. '

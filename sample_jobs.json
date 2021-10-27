@@ -7,7 +7,7 @@
         {
             "jobName": "Modified_OCV_Face_Detection_Run",
             "dockerImage": "openmpf_ocv_face_detection:latest",
-            "jobParameters": {
+            "jobProperties": {
                 "MIN_INITIAL_CONFIDENCE": "1"
             }
         }
