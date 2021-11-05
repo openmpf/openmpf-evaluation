@@ -40,6 +40,7 @@ class EvalFramework:
     EVAL_JSON_JOB_NAME = "jobName"
     EVAL_JSON_DOCKER_IMAGE = "dockerImage"
     EVAL_JSON_JOB_PROPS = "jobProperties"
+    EVAL_JSON_DOCKER_ENV = "dockerEnvironment"
 
     def __init__(self,
                  docker_job_json: Dict = {},
@@ -80,9 +81,10 @@ class EvalFramework:
             docker_image = job_entry[self.EVAL_JSON_DOCKER_IMAGE]
 
             job_props_dict = job_entry.get(self.EVAL_JSON_JOB_PROPS, {})
+            docker_env_dict = job_entry.get(self.EVAL_JSON_JOB_PROPS, {})
 
             container_id = self.container_dict[docker_image.strip()]
-            self._process_images(job_name, job_props_dict, container_id)
+            self._process_images(job_name, job_props_dict, docker_env_dict, container_id)
 
     def launch_fiftyone_session(self):
         """
@@ -122,6 +124,7 @@ class EvalFramework:
     def _process_images(self,
                         job_name: str,
                         job_props_dict: Dict[str, str],
+                        docker_env_dict: Dict[str, str],
                         container_id: str):
         if len(self.dataset) > 1:
             print("Found {} images.".format(len(self.dataset)))
@@ -137,6 +140,7 @@ class EvalFramework:
             start_time = datetime.now()
             output_obj = self._run_cli_runner_stdin_media(container_id,
                                                           job_props_dict,
+                                                          docker_env_dict,
                                                           image,
                                                           '-t', 'image', '-')
             end_time = datetime.now()
@@ -166,7 +170,7 @@ class EvalFramework:
         for entry in tracks["media"][0]["output"][self.detection_type]:
             for track in entry["tracks"]:
                 for detection in track["detections"]:
-                    im_w, im_h, im_c = image_sample.get_field("image_dim")
+                    im_h, im_w, im_c = image_sample.get_field("image_dim")
                     x = float(detection["x"])
                     y = float(detection["y"])
                     w = float(detection["width"])
@@ -188,11 +192,12 @@ class EvalFramework:
     def _run_cli_runner_stdin_media(self,
                                     container_id: str,
                                     job_props_dict: Dict[str, str],
+                                    docker_env_dict: Dict[str, str],
                                     media_path: str,
                                     *runner_args: str) -> Dict[str, Any]:
         return self._run_cli_runner_stdin_media_and_env_vars(container_id,
                                                              media_path,
-                                                             {},
+                                                             docker_env_dict,
                                                              job_props_dict,
                                                              *runner_args)
 
