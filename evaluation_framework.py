@@ -83,7 +83,9 @@ class EvalFramework:
             job_props_dict = job_entry.get(self.EVAL_JSON_JOB_PROPS, {})
             docker_env_dict = job_entry.get(self.EVAL_JSON_DOCKER_ENV, {})
 
-            container_id = self.container_dict[docker_image.strip()]
+            env_params_list = [f'-e{k}={v}' for k, v in sorted(docker_env_dict.items())]
+            image_id = docker_image.strip() + str(env_params_list)
+            container_id = self.container_dict[image_id]
             self._process_images(job_name, job_props_dict, docker_env_dict, container_id)
 
     def launch_fiftyone_session(self):
@@ -105,15 +107,21 @@ class EvalFramework:
         """
         for job_entry in docker_job_json[self.EVAL_JSON_JOB_RUNS]:
             docker_image = job_entry[self.EVAL_JSON_DOCKER_IMAGE]
-            self._set_up_containers(docker_image)
+            docker_env_dict = job_entry.get(self.EVAL_JSON_DOCKER_ENV, {})
+            self._set_up_containers(docker_image, docker_env_dict)
+
         self.docker_job_list += docker_job_json[self.EVAL_JSON_JOB_RUNS]
 
-    def _set_up_containers(self, image_name: str):
-        if image_name.strip() not in self.container_dict:
-            command = ('docker', 'run', '--rm', '-d', image_name, '-d')
+    def _set_up_containers(self, image_name: str, env_dict: Dict):
+        env_params = (f'-e{k}={v}' for k, v in sorted(env_dict.items()))
+        env_params_list = [f'-e{k}={v}' for k, v in sorted(env_dict.items())]
+        image_id = image_name.strip() + str(env_params_list)
+
+        if image_id not in self.container_dict:
+            command = ['docker', 'run', '--rm', *env_params, '-d', image_name, '-d']
             print('Starting test container with command: ', shlex.join(command))
             proc = subprocess.run(command, stdout=subprocess.PIPE, text=True, check=True)
-            self.container_dict[image_name.strip()] = proc.stdout.strip()
+            self.container_dict[image_id] = proc.stdout.strip()
 
     def _shut_down_all_containers(self):
         for container_name in self.container_dict:
@@ -197,7 +205,7 @@ class EvalFramework:
                                     *runner_args: str) -> Dict[str, Any]:
         return self._run_cli_runner_stdin_media_and_env_vars(container_id,
                                                              media_path,
-                                                             docker_env_dict,
+                                                             {},
                                                              job_props_dict,
                                                              *runner_args)
 
