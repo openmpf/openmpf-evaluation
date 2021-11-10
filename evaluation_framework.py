@@ -81,7 +81,7 @@ class EvalFramework:
             docker_image = job_entry[self.EVAL_JSON_DOCKER_IMAGE]
 
             job_props_dict = job_entry.get(self.EVAL_JSON_JOB_PROPS, {})
-            docker_env_dict = job_entry.get(self.EVAL_JSON_JOB_PROPS, {})
+            docker_env_dict = job_entry.get(self.EVAL_JSON_DOCKER_ENV, {})
 
             container_id = self.container_dict[docker_image.strip()]
             self._process_images(job_name, job_props_dict, docker_env_dict, container_id)
