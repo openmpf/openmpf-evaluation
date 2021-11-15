@@ -42,6 +42,8 @@ class EvalFramework:
     EVAL_JSON_JOB_PROPS = "jobProperties"
     EVAL_JSON_DOCKER_ENV = "dockerEnvironment"
 
+    EVAL_DUMMY_FILE = "./data/images/meds-af-S419-01_40deg.jpg"
+
     def __init__(self,
                  docker_job_json: Dict = {},
                  detection_type: str = "FACE",
@@ -84,8 +86,16 @@ class EvalFramework:
             docker_env_dict = job_entry.get(self.EVAL_JSON_DOCKER_ENV, {})
 
             env_params_list = [f'-e{k}={v}' for k, v in sorted(docker_env_dict.items())]
+            job_props_list = [f'-P{k}={v}' for k, v in sorted(job_props_dict.items())]
+            jobs_id_new = str(job_props_list)
             image_id = docker_image.strip() + str(env_params_list)
-            container_id = self.container_dict[image_id]
+            container_id, jobs_id = self.container_dict[image_id]
+            if jobs_id_new != jobs_id:
+                print("\n\n"+"="*80)
+                print("New job parameters detected for existing container, reinitializing dummy job.")
+                self._run_dummy_job_container(container_id, job_props_dict)
+                self.container_dict[image_id] = (container_id, jobs_id_new)
+
             self._process_images(job_name, job_props_dict, docker_env_dict, container_id)
 
     def launch_fiftyone_session(self):
@@ -108,24 +118,50 @@ class EvalFramework:
         for job_entry in docker_job_json[self.EVAL_JSON_JOB_RUNS]:
             docker_image = job_entry[self.EVAL_JSON_DOCKER_IMAGE]
             docker_env_dict = job_entry.get(self.EVAL_JSON_DOCKER_ENV, {})
-            self._set_up_containers(docker_image, docker_env_dict)
+            job_dict = job_entry.get(self.EVAL_JSON_JOB_PROPS, {})
+            self._set_up_containers(docker_image, docker_env_dict, job_dict)
 
         self.docker_job_list += docker_job_json[self.EVAL_JSON_JOB_RUNS]
 
-    def _set_up_containers(self, image_name: str, env_dict: Dict):
+    def _run_dummy_job_container(self, container_id: str,  job_dict: Dict):
+        start_time = datetime.now()
+        output_obj = self._run_cli_runner_stdin_media(container_id,
+                                                      job_dict,
+                                                      {},
+                                                      self.EVAL_DUMMY_FILE,
+                                                      '-t', 'image', '-')
+
+        end_time = datetime.now()
+        tracks = self._get_image_tracks(output_obj)
+
+        print("Found detections (Dummy Run): ", len(tracks))
+        print("Dummy run time: ", str(end_time - start_time))
+        print("Dummy run complete!")
+        print("="*80, "\n")
+
+    def _set_up_containers(self, image_name: str, env_dict: Dict, job_dict: Dict):
         env_params = (f'-e{k}={v}' for k, v in sorted(env_dict.items()))
         env_params_list = [f'-e{k}={v}' for k, v in sorted(env_dict.items())]
+        job_props_list = [f'-P{k}={v}' for k, v in sorted(job_dict.items())]
+
         image_id = image_name.strip() + str(env_params_list)
+        job_id = str(job_props_list)
 
         if image_id not in self.container_dict:
             command = ['docker', 'run', '--rm', *env_params, '-d', image_name, '-d']
             print('Starting test container with command: ', shlex.join(command))
             proc = subprocess.run(command, stdout=subprocess.PIPE, text=True, check=True)
-            self.container_dict[image_id] = proc.stdout.strip()
+            container_id = proc.stdout.strip()
+            self.container_dict[image_id] = (container_id, job_id)
+
+            print("\n\n"+"="*80)
+            print('\nRunning new dummy job for container: ', container_id)
+            self._run_dummy_job_container(container_id, job_dict)
+
 
     def _shut_down_all_containers(self):
-        for container_name in self.container_dict:
-            command = ('docker', 'stop', self.container_dict[container_name])
+        for container_key in self.container_dict:
+            command = ('docker', 'stop', self.container_dict[container_key][0])
             print('Stopping test container with command: ', shlex.join(command))
             subprocess.run(command, check=True)
 
