@@ -9,6 +9,8 @@
             "dockerImage": "openmpf_ocv_face_detection:latest",
             "jobProperties": {
                 "MIN_INITIAL_CONFIDENCE": "1"
+            },
+            "dockerEnvironment": {
             }
         }
     ]

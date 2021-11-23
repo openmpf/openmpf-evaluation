@@ -35,6 +35,13 @@ setuptools.setup(
         'numpy',
         'opencv-python',
         'fiftyone',
-        'fiftyone-db-rhel7'
-    )
+        'fiftyone-db-rhel7',
+        'tqdm',
+        'pandas',
+    ),
+    package_data={'test-image': ['data/images/*.jpg']},
+    include_package_data=True,
+    entry_points={
+        'console_scripts': ['mpf-eval = evaluation_framework.evaluation_framework:main'],
+    }
 )
