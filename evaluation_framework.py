@@ -58,9 +58,10 @@ class EvalFramework:
                  gt_label_path: str = None,
                  dataset_subsample: int = None,
                  out_metrics: str = None,
+                 sudo: bool = False,
                  seed: int = 51
                  ):
-
+        self.sudo = sudo
         self.seed = seed
         self.dataset_mode = dataset_mode
         self.gt_label_path = gt_label_path
@@ -77,6 +78,8 @@ class EvalFramework:
         self.out_metrics = out_metrics
         self.metrics = {}
         self.storage_format = storage_format
+
+
 
     def update_datasets(self, dir_path: str):
         """
@@ -291,7 +294,11 @@ class EvalFramework:
         job_id = str(job_props_list)
 
         if image_id not in self.container_dict:
-            command = ['docker', 'run', '--rm', *env_params, '-d', image_name, '-d']
+            if self.sudo:
+                command = ['sudo', 'docker', 'run', '--rm', *env_params, '-d', image_name, '-d']
+            else:
+                command = ['docker', 'run', '--rm', *env_params, '-d', image_name, '-d']
+
             if self.verbose:
                 print('Starting test container with command: ', shlex.join(command))
             proc = subprocess.run(command, stdout=subprocess.PIPE, text=True, check=True)
@@ -305,7 +312,11 @@ class EvalFramework:
 
     def _shut_down_all_containers(self):
         for container_key in self.container_dict:
-            command = ('docker', 'stop', self.container_dict[container_key][0])
+            if self.sudo:
+                command = ('sudo', 'docker', 'stop', self.container_dict[container_key][0])
+            else:
+                command = ('docker', 'stop', self.container_dict[container_key][0])
+
             print('Stopping test container with command: ', shlex.join(command))
             subprocess.run(command, check=True)
 
@@ -325,6 +336,9 @@ class EvalFramework:
 
         dataset_start_time = datetime.now()
         runtime_start = time.time()
+        if self.output_dir is not None:
+            out_dir = os.path.join(self.output_dir, job_name + "_" +
+                                   dataset_start_time.strftime("%Y_%m_%d-%I_%M_%S_%p"))
 
         for image_sample in tqdm(self.dataset, desc="{} Progress".format(job_name), disable=self.verbose):
             image = image_sample.filepath
@@ -332,7 +346,7 @@ class EvalFramework:
             if self.verbose:
                 print("\nProcessing image {}: {}".format(index, image))
             start_time = time.time()
-            out_dir = os.path.join(self.output_dir, job_name + "_" + dataset_start_time.strftime("%Y_%m_%d-%I_%M_%S_%p"))
+
             output_obj = self._run_cli_runner_stdin_media(container_id,
                                                           job_props_dict,
                                                           {},
@@ -445,8 +459,10 @@ class EvalFramework:
                                                  *runner_args: str) -> Dict[str, Any]:
         env_params = (f'-e{k}={v}' for k, v in env_dict.items())
         job_props = (f'-P{k}={v}' for k, v in job_props_dict.items())
-        command = ['docker', 'exec', '-i', *env_params, container_id, 'runner', *runner_args, *job_props]
-
+        if self.sudo:
+            command = ['sudo', 'docker', 'exec', '-i', *env_params, container_id, 'runner', *runner_args, *job_props]
+        else:
+            command = ['docker', 'exec', '-i', *env_params, container_id, 'runner', *runner_args, *job_props]
         if self.verbose:
             print('Running job with command: ', shlex.join(command))
 
@@ -516,7 +532,8 @@ def main():
                               gt_label_path=gt_label_path,
                               dataset_subsample=args.dataset_subsample,
                               out_metrics=args.out_metrics,
-                              seed=args.seed
+                              seed=args.seed,
+                              sudo=args.sudo
                               )
 
     evaluator.process_image_jobs(image_list, args.media_path)
@@ -564,6 +581,9 @@ def add_common_options(parser):
     parser.add_argument('--out-metrics', dest='out_metrics', default=None,
                         help='Specify output filename for evaluation and runtime metrics. '
                              'If left blank no metrics file will be generated.')
+
+    parser.add_argument('--sudo', dest='sudo', action='store_true', default=False,
+                        help='Enable sudo for Docker runs.')
 
 
 def parse_cmd_line_args() -> argparse.Namespace:
