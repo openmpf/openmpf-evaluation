@@ -26,7 +26,7 @@
 
 import argparse
 import json
-import os
+import os, sys
 import subprocess
 import shlex
 from datetime import datetime
@@ -37,6 +37,7 @@ import cv2
 import pandas as pd
 from tqdm import tqdm
 
+
 class EvalFramework:
     EVAL_JSON_JOB_RUNS = "jobRuns"
     EVAL_JSON_JOB_NAME = "jobName"
@@ -46,6 +47,12 @@ class EvalFramework:
 
     dummy_data_path = os.path.dirname(os.path.abspath(__file__))
     EVAL_DUMMY_FILE = dummy_data_path + "/data/images/meds-af-S419-01_40deg.jpg"
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self._shut_down_all_containers()
 
     def __init__(self,
                  docker_job_json: Dict = {},
@@ -59,8 +66,10 @@ class EvalFramework:
                  dataset_subsample: int = None,
                  out_metrics: str = None,
                  sudo: bool = False,
+                 dummy_jobs: bool=False,
                  seed: int = 51
                  ):
+        self.dummy_jobs = dummy_jobs
         self.sudo = sudo
         self.seed = seed
         self.dataset_mode = dataset_mode
@@ -71,7 +80,6 @@ class EvalFramework:
         self.detection_type = detection_type
         self.docker_job_list = []
         self.past_jobs_list = []
-        self.update_docker_image_jobs(docker_job_json)
         self.view_fiftyone = view_fiftyone
         self.dataset = fo.Dataset()
         self.output_dir = output_dir
@@ -79,10 +87,13 @@ class EvalFramework:
         self.metrics = {}
         self.storage_format = storage_format
 
+        self.update_docker_image_jobs(docker_job_json)
 
 
     def update_datasets(self, dir_path: str):
         """
+        Given a dataset path, load prediction labels into FiftyOne dataset.
+        Currently supports MPF JSON and FiftyOne labels.
 
         :param dir_path:
         :return:
@@ -114,6 +125,7 @@ class EvalFramework:
                             if self.verbose:
                                 print("Saving detection label")
                             sample.save()
+
                 elif self.storage_format == "fiftyone":
                     data_file = os.path.abspath(os.path.join(labels_path, "data.json"))
                     labels_file = os.path.abspath(os.path.join(labels_path, "labels.json"))
@@ -137,16 +149,16 @@ class EvalFramework:
                                                                      detection["attributes"]["detectionProperties"])
                                     detections.append(fo_detection)
                                 detections = fo.Detections(detections=detections)
+
                                 # Save predictions to dataset
                                 image_sample[label_name] = detections
+
                                 if self.verbose:
                                     print("Saving detection label")
                                 image_sample.save()
 
         return
 
-    def __del__(self):
-        self._shut_down_all_containers()
 
     def process_image_jobs(self,
                            image_list: List[str],
@@ -195,7 +207,7 @@ class EvalFramework:
             jobs_id_new = str(job_props_list)
             image_id = docker_image.strip() + str(env_params_list)
             container_id, jobs_id = self.container_dict[image_id]
-            if (jobs_id_new != jobs_id):
+            if self.dummy_jobs and jobs_id_new != jobs_id:
                 print("\n\n" + "=" * 80)
                 print("\n\nNew job parameters detected for existing container, reinitializing dummy job.")
                 self._run_dummy_job_container(container_id, job_props_dict)
@@ -306,8 +318,9 @@ class EvalFramework:
             self.container_dict[image_id] = (container_id, job_id)
 
             print("\n\n"+"="*80)
-            print('\nRunning new dummy job for container: ', container_id)
-            self._run_dummy_job_container(container_id, job_dict)
+            if self.dummy_jobs:
+                print('\nRunning new dummy job for container: ', container_id)
+                self._run_dummy_job_container(container_id, job_dict)
 
 
     def _shut_down_all_containers(self):
@@ -522,29 +535,30 @@ def main():
                                                                   EvalFramework.EVAL_JSON_JOB_PROPS:
                                                                   {}}]
 
-    evaluator = EvalFramework(docker_job_json=docker_job_list,
-                              detection_type=args.label_type,
-                              output_dir=args.out_labels,
-                              view_fiftyone=args.view_fiftyone,
-                              verbose=args.verbose,
-                              storage_format=args.prediction_storage_format,
-                              dataset_mode=dataset_mode,
-                              gt_label_path=gt_label_path,
-                              dataset_subsample=args.dataset_subsample,
-                              out_metrics=args.out_metrics,
-                              seed=args.seed,
-                              sudo=args.sudo
-                              )
+    with EvalFramework(docker_job_json=docker_job_list,
+                       detection_type=args.label_type,
+                       output_dir=args.out_labels,
+                       view_fiftyone=args.view_fiftyone,
+                       verbose=args.verbose,
+                       storage_format=args.prediction_storage_format,
+                       dataset_mode=dataset_mode,
+                       gt_label_path=gt_label_path,
+                       dataset_subsample=args.dataset_subsample,
+                       out_metrics=args.out_metrics,
+                       dummy_jobs=args.dummy_jobs,
+                       seed=args.seed,
+                       sudo=args.sudo
+                       ) as evaluator:
 
-    evaluator.process_image_jobs(image_list, args.media_path)
+        evaluator.process_image_jobs(image_list, args.media_path)
 
-    if args.past_labels_dir is not None:
-        evaluator.update_datasets(dir_path=args.past_labels_dir)
+        if args.past_labels_dir is not None:
+            evaluator.update_datasets(dir_path=args.past_labels_dir)
 
-    if args.view_fiftyone:
-        evaluator.launch_fiftyone_session(args.fo_port)
+        if args.view_fiftyone:
+            evaluator.launch_fiftyone_session(args.fo_port)
 
-    evaluator.generate_summary()
+        evaluator.generate_summary()
 
 
 def add_common_options(parser):
@@ -579,6 +593,10 @@ def add_common_options(parser):
                         help='Display detection results for each image.')
 
     parser.add_argument('--out-metrics', dest='out_metrics', default=None,
+                        help='Specify output filename for evaluation and runtime metrics. '
+                             'If left blank no metrics file will be generated.')
+
+    parser.add_argument('--run-dummy-jobs', dest='dummy_jobs', default=False, action='store_true',
                         help='Specify output filename for evaluation and runtime metrics. '
                              'If left blank no metrics file will be generated.')
 
