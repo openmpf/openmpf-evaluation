@@ -48,16 +48,31 @@ algorithm type (e.g. face detection, text detection, speech detection, object de
 
 The evaluation framework uses the [CLI Runner](https://github.com/openmpf/openmpf-docker/blob/master/CLI_RUNNER.md) to
 execute jobs using pre-built OpenMPF Docker images, such as those on [Docker Hub](https://hub.docker.com/u/openmpf).
+This framework can be run in two ways: as a standalone script (assuming FiftyOne is properly installed) or
+within a custom built Docker image. Instructions for building and running the evaluation framework in Docker can be
+found below.
+
 
 ### Quick Start
 
-To run the evaluation framework run:
+To directly use the evaluation framework script (located in evaluation_framework directory) run:
 
 `python3 evaluation_framework.py <docker-image-name-with-registry-and-tag> <path-to-media-file-or-dir>`
 
 For example, to run OCV face detection on the sample image file, run:
 
 `python3 evaluation_framework.py openmpf_ocv_face_detection:latest /home/mpf/openmpf-projects/openmpf-evaluation/data/meds-af-S419-01_40deg.jpg`
+
+### Building and Running the Evaluation Framework in Docker:
+
+To build the mpf_evaluation_framework image run the following commands:
+
+```
+chmod +x build.sh
+sudo build.sh
+```
+Afterwards you can use the `docker_evaluation_framework.py` script in the same way as the original `evaluation_framework.py`:
+`python3 docker_evaluation_framework.py openmpf_ocv_face_detection:latest /home/mpf/openmpf-projects/openmpf-evaluation/data/meds-af-S419-01_40deg.jpg`
 
 
 ### Running with Multiple Docker Images

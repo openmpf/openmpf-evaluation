@@ -597,8 +597,7 @@ def add_common_options(parser):
                              'If left blank no metrics file will be generated.')
 
     parser.add_argument('--run-dummy-jobs', dest='dummy_jobs', default=False, action='store_true',
-                        help='Specify output filename for evaluation and runtime metrics. '
-                             'If left blank no metrics file will be generated.')
+                        help='Run a dummy job for each unique docker setup.')
 
     parser.add_argument('--sudo', dest='sudo', action='store_true', default=False,
                         help='Enable sudo for Docker runs.')

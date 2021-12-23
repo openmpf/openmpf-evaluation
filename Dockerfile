@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.2
+
 #############################################################################
 # NOTICE                                                                    #
 #                                                                           #
@@ -24,21 +26,14 @@
 # limitations under the License.                                            #
 #############################################################################
 
+ARG BUILD_TAG=latest
+FROM python:3.9
 
-import setuptools
+WORKDIR /usr/src/app
 
-setuptools.setup(
-    name='OpenMPFEvaluationFramework',
-    version='6.3',
-    packages=setuptools.find_packages(),
-    install_requires=(
-        'fiftyone',
-        'tqdm',
-        'pandas',
-    ),
-    package_data={'': ['data/images/*.jpg']},
-    include_package_data=True,
-    entry_points={
-        'console_scripts': ['mpf-eval = evaluation_framework.evaluation_framework:main'],
-    }
-)
+COPY setup.py /usr/src/app/setup.py
+COPY evaluation_framework/ /usr/src/app/evaluation_framework
+
+RUN pip install .
+
+
