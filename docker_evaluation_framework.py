@@ -30,8 +30,14 @@ import os, sys
 import subprocess
 from pathlib import Path
 
-
 def get_parent_directory(path):
+    """
+    Returns the parent path of the given file or directory path.
+    If path is invalid, the current directory is returned.
+
+    :param path: Input file or directory path.
+    :return: Parent of input path.
+    """
     path_var = Path(path)
     if os.path.exists(path):
         if os.path.isfile(path):
@@ -40,17 +46,45 @@ def get_parent_directory(path):
     else:
         return path_var.parent.absolute()
 
+
 def swap_parent_path(path, new_parent):
+    """
+    Updates the given path to follow a new parent path.
+    :param path: Input file or directory path.
+    :param new_parent: New parent path.
+
+    :return: Updated path.
+    """
     abs_path = Path(path).absolute()
     parent = abs_path.parent
     return str(abs_path).replace(str(parent), str(new_parent))
 
-def add_docker_vol(src,dst,vol_list):
+
+def add_docker_vol(src, dst, vol_list):
+    """
+    Helper function to setup mount commands for each given source and destination path.
+
+    :param src: Source path in host.
+    :param dst: Destination path in Docker container.
+    :param vol_list: A list of mount commands to update.
+    :return:
+    """
     vol_list.append("--mount")
     vol_list.append("type=bind,source={},target={}".format(Path(src).absolute(), dst))
 
 
 def update_vol_command(arg_dict, argv, data_dir, docker_vol_list, param):
+    '''
+    Helper function to update job parameters.
+    Sets up the Docker mount command and updates the job parameter to point to Docker mounted filepath.
+
+    :param arg_dict: Argument dictionary generated from argparse.
+    :param argv: Direct command line inputs.
+    :param data_dir: List of mappings to Docker directories for each specific command line parameter.
+    :param docker_vol_list: List of Docker mount commands.
+    :param param: Specified parameter to update.
+    :return:
+    '''
 
     command = "--{}".format(param.replace('_', '-'))
     try:
@@ -80,8 +114,10 @@ def main(argv):
                 'docker_image_json': '/in/job_json',
                 'media_path': '/in/media'}
 
-
-    docker_vol_list = ['-v', '/var/run/docker.sock:/var/run/docker.sock', '-v' ,'/usr/bin/docker:/usr/bin/docker']
+    docker_vol_list = ['--mount',
+                       'type=bind,source={},target={}'.format('/var/run/docker.sock', '/var/run/docker.sock'),
+                       '--mount',
+                       'type=bind,source={},target={}'.format('/usr/bin/docker', '/usr/bin/docker')]
 
     args = parse_cmd_line_args()
     arg_dict = vars(args)
@@ -113,20 +149,18 @@ def main(argv):
     update_vol_command(arg_dict, argv, data_dir, docker_vol_list, 'past_labels_dir')
     update_vol_command(arg_dict, argv, data_dir, docker_vol_list, 'out_metrics')
 
-    subcommand = ['mpf-eval']  + argv[1:]
+    subcommand = ['mpf-eval'] + argv[1:]
 
-    # Improve interactive session with FiftyOne.
     if args.sudo:
-        command = ['sudo', 'docker', 'run', '-it', '-w', '/usr/src/app']
+        command = ['sudo', 'docker', 'run', '-a', 'STDIN', '-a', 'STDOUT', '-a', 'STDERR', '-it', '-w', '/usr/src/app']
     else:
-        command = ['docker', 'run', '-it', '-w', '/usr/src/app']
+        command = ['docker', 'run', '-a', 'STDIN', '-a', 'STDOUT', '-a', 'STDERR', '-it', '-w', '/usr/src/app']
 
     if args.view_fiftyone:
         command.append('-p')
         command.append('{}:{}'.format(args.fo_port, args.fo_port))
 
     command = command + docker_vol_list + ['mpf-evaluation-framework:latest'] + subcommand
-    proc = subprocess.run(command, stdout=subprocess.PIPE, text=True, check=True)
 
     if verbose:
         for arg in vars(args):
@@ -134,6 +168,9 @@ def main(argv):
         print(argv)
         print(docker_vol_list)
         print(shlex.join(command))
+
+    proc = subprocess.run(command, text=True, check=True)
+
 
 def add_common_options(parser):
     parser.add_argument('--out-labels', default=None,

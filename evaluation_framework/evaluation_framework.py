@@ -26,7 +26,7 @@
 
 import argparse
 import json
-import os, sys
+import os
 import subprocess
 import shlex
 from datetime import datetime
