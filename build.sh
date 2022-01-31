@@ -6,4 +6,4 @@ if [ $# -eq 0 ]
     tag=$1
 fi
 
-docker build -t mpf-evaluation-framework:$tag .
+docker build -t mpf_evaluation_framework:$tag .
