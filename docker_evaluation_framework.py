@@ -30,7 +30,7 @@ import os, sys
 import subprocess
 from pathlib import Path
 
-def get_parent_directory(path):
+def get_directory(path):
     """
     Returns the parent path of the given file or directory path.
     If path is invalid, the current directory is returned.
@@ -42,7 +42,7 @@ def get_parent_directory(path):
     if os.path.exists(path):
         if os.path.isfile(path):
             return path_var.parent.absolute()
-        return path
+        return path_var.absolute()
     else:
         return path_var.parent.absolute()
 
@@ -93,14 +93,8 @@ def update_vol_command(arg_dict, argv, data_dir, docker_vol_list, param):
         return
 
     path = arg_dict[param]
-    if os.path.exists(path) and os.path.isfile(path):
-        # If file swap parents.
-        add_docker_vol(get_parent_directory(path), data_dir[param], docker_vol_list)
-        path = swap_parent_path(path, data_dir[param])
-    else:
-        # If directory, swap directories.
-        add_docker_vol(path, data_dir[param], docker_vol_list)
-        path = data_dir[param]
+    add_docker_vol(get_directory(path), data_dir[param], docker_vol_list)
+    path = swap_parent_path(path, data_dir[param])
     argv[index+1] = path
 
 
@@ -125,7 +119,7 @@ def main(argv):
     if arg_dict['subparser_name'] == 'run':
         docker_json = arg_dict['docker_image_json']
         if os.path.exists(docker_json) and os.path.isfile(docker_json):
-            add_docker_vol(get_parent_directory(docker_json), data_dir['docker_image_json'], docker_vol_list)
+            add_docker_vol(get_directory(docker_json), data_dir['docker_image_json'], docker_vol_list)
             new_docker_json = swap_parent_path(docker_json, data_dir['docker_image_json'])
             argv[2] = new_docker_json
 
@@ -133,12 +127,10 @@ def main(argv):
         media_path = arg_dict["media_path"]
         if os.path.exists(media_path) and os.path.isfile(media_path):
             # If file swap parents.
-            add_docker_vol(get_parent_directory(media_path), data_dir['media_path'], docker_vol_list)
-            media_path = swap_parent_path(media_path, data_dir['media_path'])
+            add_docker_vol(get_directory(media_path), get_directory(media_path), docker_vol_list)
         else:
             # If directory, swap directories.
-            add_docker_vol(media_path, data_dir['media_path'], docker_vol_list)
-            media_path = data_dir['media_path']
+            add_docker_vol(media_path, media_path, docker_vol_list)
 
         if arg_dict['subparser_name'] == 'run':
             argv[3] = media_path
