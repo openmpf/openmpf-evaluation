@@ -35,6 +35,7 @@ setuptools.setup(
         'fiftyone',
         'tqdm',
         'pandas',
+        'ffmpeg',
     ),
     package_data={'': ['data/images/*.jpg']},
     include_package_data=True,

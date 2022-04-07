@@ -13,6 +13,7 @@
             "dockerEnvironment": {
             }
         }
-    ]
+    ],
+    "FiftyOneCommandLineArguments" : "--view-fiftyone"
 }
 

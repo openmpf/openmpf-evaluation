@@ -30,7 +30,8 @@ import os, sys
 import subprocess
 from pathlib import Path
 
-def get_directory(path):
+
+def get_parent_directory(path):
     """
     Returns the parent path of the given file or directory path.
     If path is invalid, the current directory is returned.
@@ -93,7 +94,7 @@ def update_vol_command(arg_dict, argv, data_dir, docker_vol_list, param):
         return
 
     path = arg_dict[param]
-    add_docker_vol(get_directory(path), data_dir[param], docker_vol_list)
+    add_docker_vol(get_parent_directory(path), data_dir[param], docker_vol_list)
     path = swap_parent_path(path, data_dir[param])
     argv[index+1] = path
 
@@ -119,7 +120,7 @@ def main(argv):
     if arg_dict['subparser_name'] == 'run':
         docker_json = arg_dict['docker_image_json']
         if os.path.exists(docker_json) and os.path.isfile(docker_json):
-            add_docker_vol(get_directory(docker_json), data_dir['docker_image_json'], docker_vol_list)
+            add_docker_vol(get_parent_directory(docker_json), data_dir['docker_image_json'], docker_vol_list)
             new_docker_json = swap_parent_path(docker_json, data_dir['docker_image_json'])
             argv[2] = new_docker_json
 
@@ -127,10 +128,10 @@ def main(argv):
         media_path = arg_dict["media_path"]
         if os.path.exists(media_path) and os.path.isfile(media_path):
             # If file swap parents.
-            add_docker_vol(get_directory(media_path), get_directory(media_path), docker_vol_list)
+            add_docker_vol(get_parent_directory(media_path), get_parent_directory(media_path), docker_vol_list)
         else:
             # If directory, swap directories.
-            add_docker_vol(media_path, media_path, docker_vol_list)
+            add_docker_vol(Path(media_path).absolute(), Path(media_path).absolute(), docker_vol_list)
 
         if arg_dict['subparser_name'] == 'run':
             argv[3] = media_path
@@ -152,7 +153,7 @@ def main(argv):
         command.append('-p')
         command.append('{}:{}'.format(args.fo_port, args.fo_port))
 
-    command = command + docker_vol_list + ['mpf-evaluation-framework:latest'] + subcommand
+    command = command + docker_vol_list + ['mpf_evaluation_framework:latest'] + subcommand
 
     if verbose:
         for arg in vars(args):
@@ -171,13 +172,16 @@ def add_common_options(parser):
     parser.add_argument('--label-type', default="FACE",
                         help='Specify label type for detection model.')
 
+    parser.add_argument('--media-file-type', dest='file_type', default="image",
+                        help='Specifies input media type. Currently supports `image` and `video`.')
+
     parser.add_argument('--view-fiftyone', dest='view_fiftyone', action='store_true',
                         help='Load datasets and labels into FiftyOne for evaluation.')
 
     parser.add_argument('--view-fiftyone-port', '--fo-port', dest='fo_port', default=5151,
                         help='Specify port number for FiftyOne viewing app. Default port is 5151')
 
-    parser.add_argument('--prediction-storage-format', default="fiftyone",
+    parser.add_argument('--prediction-storage-format', default="mpfjson",
                         help='Storage format for predicted labels for all label directories. Current options are `fiftyone` and `mpfjson`')
 
     parser.add_argument('--past-labels-dir', default=None,
