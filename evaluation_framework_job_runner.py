@@ -192,7 +192,7 @@ class EvalFramework:
 
             if self.verbose:
                 print('Starting test container with command: ', shlex.join(command))
-            proc = subprocess.run(command, stdout=subprocess.PIPE, text=True, check=True)
+            proc = subprocess.run(command, stdout=subprocess.PIPE, check=True)
             container_id = proc.stdout.strip()
             self.container_dict[image_id] = (container_id, job_id)
 

@@ -162,7 +162,7 @@ def main(argv):
         print(docker_vol_list)
         print(shlex.join(command))
 
-    proc = subprocess.run(command, text=True, check=True)
+    proc = subprocess.run(command, check=True)
 
 
 def add_common_options(parser):
