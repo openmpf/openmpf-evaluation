@@ -32,9 +32,9 @@ import shlex
 from datetime import datetime
 import time
 from typing import Dict, Any, List
-import cv2
-import pandas as pd
-from tqdm import tqdm
+#import cv2
+#import pandas as pd
+#from tqdm import tqdm
 from xml.etree import ElementTree
 
 class EvalFramework:
@@ -64,7 +64,8 @@ class EvalFramework:
                  out_metrics: str = None,
                  sudo: bool = False,
                  dummy_jobs: bool = False,
-                 seed: int = 51
+                 seed: int = 51,
+                 cpu: bool = False
                  ):
         self.detection_type = detection_type
         self.dummy_jobs = dummy_jobs
@@ -80,6 +81,7 @@ class EvalFramework:
         self.output_dir = output_dir
         self.out_metrics = out_metrics
         self.metrics = {}
+        self.cpu = cpu
 
         self.update_docker_image_jobs(docker_job_json)
 
@@ -185,11 +187,16 @@ class EvalFramework:
         job_id = str(job_props_list)
 
         if image_id not in self.container_dict:
-            if self.sudo:
-                command = ['sudo', 'docker', 'run', '--rm', *env_params, '-d', image_name, '-d']
+            
+            if self.cpu:
+                command = ['docker', 'run', '--runtime=runc', '--rm', *env_params, '-d', image_name, '-d']
             else:
                 command = ['docker', 'run', '--rm', *env_params, '-d', image_name, '-d']
-
+            
+            if self.sudo:
+                command = ['sudo'] + command 
+                
+                
             if self.verbose:
                 print('Starting test container with command: ', shlex.join(command))
             proc = subprocess.run(command, stdout=subprocess.PIPE, check=True)
@@ -207,8 +214,8 @@ class EvalFramework:
                 command = ('sudo', 'docker', 'stop', self.container_dict[container_key][0])
             else:
                 command = ('docker', 'stop', self.container_dict[container_key][0])
-
-            print('Stopping test container with command: ', shlex.join(command))
+            if self.verbose:
+                print('Stopping test container with command: ', shlex.join(command))
             subprocess.run(command, check=True)
 
     def _process_media(self,
@@ -281,10 +288,14 @@ class EvalFramework:
                                                  *runner_args: str) -> Dict[str, Any]:
         env_params = (f'-e{k}={v}' for k, v in env_dict.items())
         job_props = (f'-P{k}={v}' for k, v in job_props_dict.items())
+        
+        
+
+        command = ['docker', 'exec', '-i', *env_params, container_id, 'runner', *runner_args, *job_props]
+            
         if self.sudo:
-            command = ['sudo', 'docker', 'exec', '-i', *env_params, container_id, 'runner', *runner_args, *job_props]
-        else:
-            command = ['docker', 'exec', '-i', *env_params, container_id, 'runner', *runner_args, *job_props]
+            command = ['sudo'] + command
+        
         if self.verbose:
             print('Running job with command: ', shlex.join(command))
 
@@ -348,7 +359,8 @@ def main():
                        out_metrics=args.out_metrics,
                        dummy_jobs=args.dummy_jobs,
                        seed=args.seed,
-                       sudo=args.sudo
+                       sudo=args.sudo,
+                       cpu=args.cpu,
                        ) as evaluator:
         evaluator.process_media_jobs(media_list)
         evaluator.generate_summary()
@@ -368,6 +380,9 @@ def main():
 def add_common_options(parser):
     parser.add_argument('--out-labels', default=None,
                         help='Path to store output JSON results. If left blank no JSONs are created.')
+                        
+    parser.add_argument('--cpu', dest='cpu', default=False, action='store_true',
+                        help='Set runtime to runc.')
 
     parser.add_argument('--media-file-type', dest='file_type', default="image",
                         help='Specifies input media type. Currently supports `image` and `video`.')
