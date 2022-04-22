@@ -127,6 +127,24 @@ def eval_bandwidth(signal, sr, threshold=-50):
             break
     return freqband
 
+def map_pred_to_ground(ground_start, ground_stop, pred_split):
+    utterances = []
+    for pred_utterance in pred_split:
+        
+        
+        temp = pred_utterance.split("-")
+        pred_start = int(temp[0])
+        pred_stop = int(temp[1])
+        
+        inter_start = max(ground_start, pred_start)
+        inter_stop = min(ground_stop, pred_stop)
+        #print(inter_start, inter_stop)
+        
+        if (inter_stop > inter_start):
+            utterances.append((pred_start, pred_stop))
+            
+    return utterances
+
 
 # load data from JSON manifest file
 def load_data(data_filename, disable_caching=False, estimate_audio=False, vocab=None):
@@ -151,7 +169,7 @@ def load_data(data_filename, disable_caching=False, estimate_audio=False, vocab=
         pickle_filename += '_' + timestamp + '.pkl'
         if os.path.exists(pickle_filename):
             with open(pickle_filename, 'rb') as f:
-                data, wer, cer, wmr, mwa, num_hours, vocabulary_data, alphabet, metrics_available = pickle.load(f)
+                data, wer, cer, wmr, mwa, num_hours, vocabulary_data, alphabet, metrics_available, timestamps_available = pickle.load(f)
             if vocab is not None:
                 for item in vocabulary_data:
                     item['OOV'] = item['word'] not in vocabulary_ext
@@ -163,11 +181,11 @@ def load_data(data_filename, disable_caching=False, estimate_audio=False, vocab=
                     item['level_db'] = 20 * np.log10(np.max(np.abs(signal)))
             with open(pickle_filename, 'wb') as f:
                 pickle.dump(
-                    [data, wer, cer, wmr, mwa, num_hours, vocabulary_data, alphabet, metrics_available],
+                    [data, wer, cer, wmr, mwa, num_hours, vocabulary_data, alphabet, metrics_available, timestamps_available],
                     f,
                     pickle.HIGHEST_PROTOCOL,
                 )
-            return data, wer, cer, wmr, mwa, num_hours, vocabulary_data, alphabet, metrics_available
+            return data, wer, cer, wmr, mwa, num_hours, vocabulary_data, alphabet, metrics_available, timestamps_available
 
     data = []
     wer_dist = 0.0
@@ -186,6 +204,7 @@ def load_data(data_filename, disable_caching=False, estimate_audio=False, vocab=
 
     sm = difflib.SequenceMatcher()
     metrics_available = False
+    timestamps_available = False
     with open(data_filename, 'r', encoding='utf8') as f:
         for line in tqdm.tqdm(f):
             item = json.loads(line)
@@ -217,6 +236,40 @@ def load_data(data_filename, disable_caching=False, estimate_audio=False, vocab=
                         match_vocab[orig[word_idx]] += 1
                 wmr_count += measures['hits']
 
+            if 'pred_timestamps' in item and 'timestamps' in item:
+                timestamps_available = True
+
+                ground_split = item['timestamps'].split(", ")
+                pred_split = item['pred_timestamps'].split(", ")
+
+                IoU_list = []
+
+                for ground_utterance in ground_split:
+                    temp = ground_utterance.split("-")
+                    ground_start = int(temp[0])
+                    ground_stop = int(temp[1])
+                    
+                    pred_utterances = map_pred_to_ground(ground_start, ground_stop, pred_split)
+                    #print(pred_utterances)
+                    
+                    total_intersection = 0
+                    total_area = ground_stop-ground_start
+                    
+                    for pred_start, pred_stop in pred_utterances:
+                        inter_start = max(ground_start, pred_start)
+                        inter_stop = min(ground_stop, pred_stop)
+                        
+                        intersection = inter_stop - inter_start
+                        #print(inter_start, inter_stop)
+                        #print(intersection)
+                        
+                        total_intersection += intersection
+                        total_area += pred_stop-pred_start
+                    
+                    IoU = total_intersection / (total_area - total_intersection)
+                    IoU_list.append(IoU)
+        
+
             data.append(
                 {
                     'audio_filepath': item['audio_filepath'],
@@ -240,7 +293,9 @@ def load_data(data_filename, disable_caching=False, estimate_audio=False, vocab=
                 data[-1]['I'] = measures['insertions']
                 data[-1]['D'] = measures['deletions']
                 data[-1]['D-I'] = measures['deletions'] - measures['insertions']
-                data[-1]['timestamp IoU'] = 'IoU'
+                
+            if timestamps_available:
+                data[-1]['timestamp IoU'] = ", ".join(map(str, IoU_list))
 
             if estimate_audio:
                 target_file = item['audio_filepath']
@@ -279,12 +334,12 @@ def load_data(data_filename, disable_caching=False, estimate_audio=False, vocab=
     if not disable_caching:
         with open(pickle_filename, 'wb') as f:
             pickle.dump(
-                [data, wer, cer, wmr, mwa, num_hours, vocabulary_data, alphabet, metrics_available],
+                [data, wer, cer, wmr, mwa, num_hours, vocabulary_data, alphabet, metrics_available, timestamps_available],
                 f,
                 pickle.HIGHEST_PROTOCOL,
             )
 
-    return data, wer, cer, wmr, mwa, num_hours, vocabulary_data, alphabet, metrics_available
+    return data, wer, cer, wmr, mwa, num_hours, vocabulary_data, alphabet, metrics_available, timestamps_available
 
 
 # plot histogram of specified field in data list
@@ -334,7 +389,7 @@ def plot_word_accuracy(vocabulary_data):
 
 args = parse_args()
 print('Loading data...')
-data, wer, cer, wmr, mwa, num_hours, vocabulary, alphabet, metrics_available = load_data(
+data, wer, cer, wmr, mwa, num_hours, vocabulary, alphabet, metrics_available, timestamps_available = load_data(
     args.manifest, args.disable_caching_metrics, args.estimate_audio_metrics, args.vocab
 )
 print('Starting server...')
@@ -649,19 +704,6 @@ if metrics_available:
                         style={'border': 'none', 'width': '100%', 'height': '100%'},
                         className='bg-light font-monospace text-break small',
                     ),
-                    class_name='mt-1 bg-light font-monospace text-break small rounded border',
-                ),
-            ]
-        ),
-        dbc.Row(
-            [
-                dbc.Col(
-                    html.Div(children='timestamps'),
-                    width=2,
-                    class_name='mt-1 bg-light font-monospace text-break small rounded border',
-                ),
-                dbc.Col(
-                    html.Div(children='insert timestamps here'),
                     class_name='mt-1 bg-light font-monospace text-break small rounded border',
                 ),
             ]
