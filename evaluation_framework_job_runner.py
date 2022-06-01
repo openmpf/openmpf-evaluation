@@ -195,10 +195,12 @@ class EvalFramework:
             
             if self.sudo:
                 command = ['sudo'] + command 
+            
                 
                 
             if self.verbose:
-                print('Starting test container with command: ', shlex.join(command))
+                str_command = [str(x) for x in command]
+                print('Starting test container with command: ', shlex.join(str_command))
             proc = subprocess.run(command, stdout=subprocess.PIPE, check=True)
             container_id = proc.stdout.strip()
             self.container_dict[image_id] = (container_id, job_id)
@@ -215,7 +217,8 @@ class EvalFramework:
             else:
                 command = ('docker', 'stop', self.container_dict[container_key][0])
             if self.verbose:
-                print('Stopping test container with command: ', shlex.join(command))
+                str_command = [str(x) for x in command]
+                print('Stopping test container with command: ', shlex.join(str_command))
             subprocess.run(command, check=True)
 
     def _process_media(self,
@@ -297,7 +300,8 @@ class EvalFramework:
             command = ['sudo'] + command
         
         if self.verbose:
-            print('Running job with command: ', shlex.join(command))
+            str_command = [str(x) for x in command]
+            print('Running job with command: ', shlex.join(str_command))
 
         with open(media_path) as media_file, \
                 subprocess.Popen(command, stdin=media_file, stdout=subprocess.PIPE,
