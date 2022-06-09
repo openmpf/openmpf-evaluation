@@ -164,7 +164,7 @@ def parse_cmd_line_args() -> argparse.Namespace:
 
     parser.add_argument("--view-fiftyone", dest="view_fiftyone", action="store_true",
                         help="Enables FiftyOne viewing service.")
-    parser.add_argument("--verbose", dest="view_fiftyone", action="store_true",
+    parser.add_argument("--verbose", dest="verbose", action="store_true",
                         help="Enables reporting of all individual class metrics.")
     parser.add_argument("--case-sensitive", dest="case_sensitive", action="store_true",
                         help="Enables FiftyOne viewing service.")

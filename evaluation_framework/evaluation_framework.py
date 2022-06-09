@@ -60,7 +60,6 @@ class EvalFramework:
         self.dataset_dir = dataset_dir
         self.annotations_file = annotations_file
         self.predictions_dir = predictions_dir
-
         # TODO: Add support for other dataset types
         self.dataset_type = dataset_type
         self.class_mapping_file = class_mapping_file
@@ -231,8 +230,6 @@ class EvalFramework:
                     classes=self.class_id_list,
                     k=k,
                 )
-
-
                 results_dict[k] = results.report(classes=self.class_id_list)
 
             if self.output_metrics is not None:
@@ -295,7 +292,7 @@ def main():
         if args.output_metrics is not None:
             evaluator.generate_summary()
         if args.view_fiftyone:
-            evaluator.launch_fiftyone_session()
+            evaluator.launch_fiftyone_session(port=args.fo_port)
 
 
 def parse_cmd_line_args() -> argparse.Namespace:
@@ -316,10 +313,13 @@ def parse_cmd_line_args() -> argparse.Namespace:
 
     parser.add_argument("--view-fiftyone", dest="view_fiftyone", action="store_true",
                         help="Enables FiftyOne viewing service.")
-    parser.add_argument("--verbose", dest="view_fiftyone", action="store_true",
+    parser.add_argument("--verbose", dest="verbose", action="store_true",
                         help="Enables reporting of all individual class metrics.")
     parser.add_argument("--case-sensitive", dest="case_sensitive", action="store_true",
                         help="Enables FiftyOne viewing service.")
+
+    parser.add_argument('--view-fiftyone-port', '--fo-port', dest='fo_port', default=5151,
+                        help='Specify port number for FiftyOne viewing app. Default port is 5151')
 
     parser.set_defaults(view_fiftyone=False)
     parser.set_defaults(verbose=False)
