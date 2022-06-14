@@ -11,7 +11,7 @@ pip install https://github.com/pyannote/pyannote-audio/archive/develop.zip
 ```
 python generate_timestamp_groundtruth.py input [--output_dir OUTPUT_DIR] [--merge_labels]
 ```
-Input can be an audio file, directory of audio files, or a .txt list of audio files
+Input can be an audio file, directory of audio files, or a .txt list of audio files.
 Pyannote uses torchaudio with the soundfile backend to load audio, so .mp3 is not supported.
 See [https://pytorch.org/audio/stable/backend.html#backend](https://pytorch.org/audio/stable/backend.html#backend) for a full list of what audio formats are supported.
 
