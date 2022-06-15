@@ -207,8 +207,10 @@ class EvalFramework:
                             )
                             sample.save()
                     else:
-                        print("Warning: Missing Prediction for " + filepath)
-                        self.dataset.remove(filepath)
+                        print("Warning: Missing Groundtruth for " + filepath)
+                else:
+                    print("Warning: Missing Prediction for " + filepath)
+                    self.dataset.remove_sample(sample)
 
     def evaluate_fiftyone(self):
         """
@@ -316,7 +318,7 @@ def parse_cmd_line_args() -> argparse.Namespace:
     parser.add_argument("--verbose", dest="verbose", action="store_true",
                         help="Enables reporting of all individual class metrics.")
     parser.add_argument("--case-sensitive", dest="case_sensitive", action="store_true",
-                        help="Enables FiftyOne viewing service.")
+                        help="Enables case sensitive class labels.")
 
     parser.add_argument('--view-fiftyone-port', '--fo-port', dest='fo_port', default=5151,
                         help='Specify port number for FiftyOne viewing app. Default port is 5151')
