@@ -98,15 +98,17 @@ def update_vol_command(arg_dict, argv, data_dir, docker_vol_list, param):
     argv[index+1] = path
 
 
+def add_docker_vol_command(media_path, docker_vol_list, vol_set):
+    if get_parent_directory(media_path) not in vol_set:
+        vol_set.add(get_parent_directory(media_path))
+        add_docker_vol(get_parent_directory(media_path), get_parent_directory(media_path), docker_vol_list)
+
+
 def main(argv):
     verbose = False
     argv[0] = 'evaluation_framework.py'
 
-    data_dir = {'out_labels': '/out/labels',
-                'past_labels_dir': '/out/data/past_labels',
-                'out_metrics': '/out/metrics',
-                'docker_image_json': '/in/job_json',
-                'media_path': '/in/media'}
+    data_dir_list = ['dataset_dir', 'annotations_file', 'output_metrics', 'class_mapping_file', 'predictions_dir']
 
     docker_vol_list = ['--mount',
                        'type=bind,source={},target={}'.format('/var/run/docker.sock', '/var/run/docker.sock'),
@@ -115,33 +117,13 @@ def main(argv):
 
     args = parse_cmd_line_args()
     arg_dict = vars(args)
+    vol_set = set()
+    for command in arg_dict:
+        if command in data_dir_list:
+            index = argv.index(arg_dict[command])
+            argv[index] = Path(arg_dict[command]).absolute()
 
-    if arg_dict['subparser_name'] == 'run':
-        docker_json = arg_dict['docker_image_json']
-        if os.path.exists(docker_json) and os.path.isfile(docker_json):
-            add_docker_vol(get_parent_directory(docker_json), data_dir['docker_image_json'], docker_vol_list)
-            new_docker_json = swap_parent_path(docker_json, data_dir['docker_image_json'])
-            argv[2] = new_docker_json
-
-    if "media_path" in arg_dict:
-        media_path = arg_dict["media_path"]
-        if os.path.exists(media_path) and os.path.isfile(media_path):
-            # If file swap parents.
-            add_docker_vol(get_parent_directory(media_path), get_parent_directory(media_path), docker_vol_list)
-        else:
-            # If directory, swap directories.
-            add_docker_vol(Path(media_path).absolute(), Path(media_path).absolute(), docker_vol_list)
-
-        if arg_dict['subparser_name'] == 'run':
-            argv[3] = media_path
-        else:
-            argv[2] = media_path
-
-    update_vol_command(arg_dict, argv, data_dir, docker_vol_list, "out_labels")
-    update_vol_command(arg_dict, argv, data_dir, docker_vol_list, 'past_labels_dir')
-    update_vol_command(arg_dict, argv, data_dir, docker_vol_list, 'out_metrics')
-
-    subcommand = ['mpf-eval'] + argv[1:]
+            add_docker_vol_command(arg_dict[command], docker_vol_list, vol_set)
 
     if args.sudo:
         command = ['sudo', 'docker', 'run', '-a', 'STDIN', '-a', 'STDOUT', '-a', 'STDERR', '-it', '-w', '/usr/src/app']
@@ -151,9 +133,8 @@ def main(argv):
     if args.view_fiftyone:
         command.append('-p')
         command.append('{}:{}'.format(args.fo_port, args.fo_port))
-
+    subcommand = ['mpf-eval'] + argv[1:]
     command = command + docker_vol_list + ['mpf_evaluation_framework:latest'] + subcommand
-
     if verbose:
         for arg in vars(args):
             print("Parameter {} : {}".format(arg, arg_dict[arg]))
@@ -161,95 +142,39 @@ def main(argv):
         print(docker_vol_list)
         print(shlex.join(command))
 
-    proc = subprocess.run(command, check=True)
-
-
-def add_common_options(parser):
-    parser.add_argument('--out-labels', default=None,
-                        help='Path to store output JSON results. If left blank no JSONs are created.')
-
-    parser.add_argument('--label-type', default="FACE",
-                        help='Specify label type for detection model.')
-
-    parser.add_argument('--media-file-type', dest='file_type', default="image",
-                        help='Specifies input media type. Currently supports `image` and `video`.')
-
-    parser.add_argument('--view-fiftyone', dest='view_fiftyone', action='store_true',
-                        help='Load datasets and labels into FiftyOne for evaluation.')
-
-    parser.add_argument('--view-fiftyone-port', '--fo-port', dest='fo_port', default=5151,
-                        help='Specify port number for FiftyOne viewing app. Default port is 5151')
-
-    parser.add_argument('--prediction-storage-format', default="mpfjson",
-                        help='Storage format for predicted labels for all label directories. Current options are `fiftyone` and `mpfjson`')
-
-    parser.add_argument('--past-labels-dir', default=None,
-                        help='Optional: Storage directory for past labels. All past labels must share the same format.')
-
-    parser.add_argument('--ground-truth-voc', dest='ground_truth_voc', default=None,
-                        help='Path to VOC labels directory or dataset ground truth.')
-
-    parser.add_argument('--dataset-subsample', '--samples', type=int, dest='dataset_subsample', default=None,
-                        help='Specify number of images to randomly select.')
-
-    parser.add_argument('--seed', dest='seed', type=int, default=51,
-                        help='Specify random seed parameter for database subset behavior.')
-
-    parser.add_argument('--verbose', dest='verbose', action='store_true',
-                        help='Display detection results for each image.')
-
-    parser.add_argument('--out-metrics', dest='out_metrics', default=None,
-                        help='Specify output filename for evaluation and runtime metrics. '
-                             'If left blank no metrics file will be generated.')
-
-    parser.add_argument('--run-dummy-jobs', dest='dummy_jobs', default=False, action='store_true',
-                        help='Run a dummy job for each unique docker setup.')
-
-    parser.add_argument('--sudo', dest='sudo', action='store_true', default=False,
-                        help='Enable sudo for Docker runs.')
+    proc = subprocess.run(command, text=True, check=True)
 
 
 def parse_cmd_line_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
-    # TODO: Swap between display only mode and live jobs
-    subparsers = parser.add_subparsers(title='Evaluation Framework Subcommands',
-                                       dest="subparser_name",
-                                       description='Valid subcommands are `run` and `view`',
-                                       help='Examples:\n'
-                                            '- `mpf-eval run <docker_image_json> <media_path> [optional_parameters]`'
-                                            ' : Run new docker jobs on given media path.\n'
-                                            '- `mpf-eval view <media_path> [optional_parameters]`'
-                                            ' : View images or past mpf-eval runs. FiftyOne app is auto-enabled.\n')
+    parser.add_argument("dataset_dir", help="Path to dataset directory containing image files.")
+    parser.add_argument("annotations_file", help="Path to dataset annotations file or directory (csv for ImageNet).")
+    parser.add_argument("class_mapping_file", help="Path to class labels file (classes.txt for ImageNet).")
+    parser.add_argument("predictions_dir", help="Path to predictions directory containing job run subdirectories.")
 
-    job_parser = subparsers.add_parser('run',
-                                       formatter_class=argparse.RawTextHelpFormatter)
-    add_common_options(job_parser)
-    job_parser.add_argument('docker_image_json',
-                            help='JSON file listing Docker image names with registry, tag information, '
-                            'and associated job parameters. '
-                            '\nA single Docker image name can be provided in place of the JSON file. '
-                            '\nPlease see README.md for details. ')
+    parser.add_argument("--dataset-type", dest="dataset_type", default="imagenet",
+                        help="Specifies supported dataset type (currently imagenet).")
+    parser.add_argument("--dataset-subsample", dest="dataset_subsample", default=-1,
+                        help="Specifies number of files to process in dataset. "
+                             "Set below 0 to process the entire dataset, or between 0-1 to process a percentage of the dataset.")
 
-    job_parser.add_argument('media_path',
-                            help='Path to media to process. Can be either an image file, directory of images, '
-                                 'or target directory of a given dataset.'
-                                 '\n A data or label file must provided for datasets.')
+    parser.add_argument("--output-metrics", default=None,
+                        help="Path to store output prediction results.")
 
-    job_parser.set_defaults(view_fiftyone=False)
-    job_parser.set_defaults(verbose=False)
+    parser.add_argument("--view-fiftyone", dest="view_fiftyone", action="store_true",
+                        help="Enables FiftyOne viewing service.")
+    parser.add_argument("--verbose", dest="verbose", action="store_true",
+                        help="Enables reporting of all individual class metrics.")
+    parser.add_argument("--case-sensitive", dest="case_sensitive", action="store_true",
+                        help="Enables FiftyOne viewing service.")
+    parser.add_argument('--sudo', dest='sudo', action='store_true', default=False,
+                        help='Enable sudo for Docker runs.')
+    parser.add_argument('--view-fiftyone-port', '--fo-port', dest='fo_port', default=5151,
+                        help='Specify port number for FiftyOne viewing app. Default port is 5151')
 
-    view_parser = subparsers.add_parser('view',
-                                        formatter_class=argparse.RawTextHelpFormatter)
-    add_common_options(view_parser)
-    view_parser.add_argument('media_path',
-                             help='Path to media to process. Can be either an image file, directory of images, '
-                                  'or target directory of a given dataset.'
-                                  '\n A data or label file must provided for datasets.')
-    view_parser.add_argument('--disable-fiftyone', dest='view_fiftyone', action='store_false',
-                             help='Disables FiftyOne viewing service.')
-    view_parser.set_defaults(verbose=False)
-    view_parser.set_defaults(view_fiftyone=True)
-
+    parser.set_defaults(view_fiftyone=False)
+    parser.set_defaults(verbose=False)
+    parser.set_defaults(case_sensitive=False)
     return parser.parse_args()
 
 
