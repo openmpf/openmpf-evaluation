@@ -5,11 +5,11 @@
 # under contract, and is subject to the Rights in Data-General Clause       #
 # 52.227-14, Alt. IV (DEC 2007).                                            #
 #                                                                           #
-# Copyright 2021 The MITRE Corporation. All Rights Reserved.                #
+# Copyright 2023 The MITRE Corporation. All Rights Reserved.                #
 #############################################################################
 
 #############################################################################
-# Copyright 2021 The MITRE Corporation                                      #
+# Copyright 2023 The MITRE Corporation                                      #
 #                                                                           #
 # Licensed under the Apache License, Version 2.0 (the "License");           #
 # you may not use this file except in compliance with the License.          #
@@ -32,6 +32,7 @@ import shlex
 from datetime import datetime
 import time
 from typing import Dict, Any, List
+import logging
 #import cv2
 #import pandas as pd
 #from tqdm import tqdm
@@ -64,9 +65,18 @@ class EvalFramework:
                  out_metrics: str = None,
                  sudo: bool = False,
                  dummy_jobs: bool = False,
+                 repeat_run: int = 10,
+                 fail_media: str = None,
+                 blank_media: str = None,
                  seed: int = 51,
                  cpu: bool = False
                  ):
+
+        self.repeat_run = repeat_run
+        self.fail_media = fail_media
+        self.blank_media = blank_media
+
+
         self.detection_type = detection_type
         self.dummy_jobs = dummy_jobs
         self.sudo = sudo
@@ -82,7 +92,12 @@ class EvalFramework:
         self.out_metrics = out_metrics
         self.metrics = {}
         self.cpu = cpu
+        self.docker_job_json = docker_job_json
 
+        if self.blank_media is not None:
+            os.makedirs(self.blank_media, exist_ok=True)
+        if self.fail_media is not None:
+            os.makedirs(self.fail_media, exist_ok=True)
         self.update_docker_image_jobs(docker_job_json)
 
     def process_media_jobs(self,
@@ -95,11 +110,20 @@ class EvalFramework:
         :param media_list: List of  file paths.
         :return: None
         """
-        
+
         # Setup dataset
         for job_entry in self.docker_job_list:
             job_name = job_entry[self.EVAL_JSON_JOB_NAME]
             docker_image = job_entry[self.EVAL_JSON_DOCKER_IMAGE]
+
+            self.metrics[job_name] = {'DOCKER_IMAGE': docker_image,
+                                         'SUCCESSFUL_RUNS': 0,
+                                         'RUNTIME': 0.0,
+                                         'BLANK_OUTPUT':0,
+                                         'FAILED_RUNS':0,
+                                         'FAILED_MEDIA_RUNTIME':0.0,
+                                         'BLANK_MEDIA_FILELIST':[],
+                                         "FAILED_MEDIA_FILELIST":[]}
 
             job_props_dict = job_entry.get(self.EVAL_JSON_JOB_PROPS, {})
             docker_env_dict = job_entry.get(self.EVAL_JSON_DOCKER_ENV, {})
@@ -108,15 +132,14 @@ class EvalFramework:
             job_props_list = [f'-P{k}={v}' for k, v in sorted(job_props_dict.items())]
             jobs_id_new = str(job_props_list)
             image_id = docker_image.strip() + str(env_params_list)
-            container_id, jobs_id = self.container_dict[image_id]
-            
+            container_id, jobs_id, *params = self.container_dict[image_id]
             if self.dummy_jobs and jobs_id_new != jobs_id:
                 print("\n\n" + "=" * 80)
                 print("\n\nNew job parameters detected for existing container, reinitializing dummy job.")
                 self._run_dummy_job_container(container_id, job_props_dict)
-                self.container_dict[image_id] = (container_id, jobs_id_new)
+                self.container_dict[image_id] = (container_id, jobs_id_new) + params
 
-            self._process_media(job_name, media_list, job_props_dict, docker_env_dict, container_id)
+            self._process_media(job_name, media_list, job_props_dict, docker_env_dict, image_id)
 
     def _evaluate_fiftyone_job(self, job_name):
         results = self.dataset.evaluate_detections(
@@ -142,8 +165,15 @@ class EvalFramework:
                 for job_name, results in self.metrics.items():
                     f.write("\n\nRun Name: {}\n".format(job_name))
                     print(results)
-                    if "Runtime" in results:
-                        f.write("Total Image Processing Time: {} seconds.\n".format(results["Runtime"]))
+                    if "TOTAL_RUNTIME" in results:
+                        f.write("Total Processing Time: {} seconds.\n".format(results["TOTAL_RUNTIME"]))
+                        f.write("Processing Time for Successful Runs: {} seconds\n".format(results["RUNTIME"]))
+                        f.write("Number of Successful Runs: {} \n".format(results["SUCCESSFUL_RUNS"]))
+                        f.write("Number of Blank JSONS: {} \n".format(results["BLANK_OUTPUT"]))
+                        f.write("Processing Time for Failed Runs: {} seconds\n".format(results["FAILED_MEDIA_RUNTIME"]))
+                        f.write("Number of Failed Runs: {} \n".format(results["FAILED_RUNS"]))
+                        f.write("\nList of failed media:{}\n".format(", ".join(results["FAILED_MEDIA_FILELIST"])))
+                        f.write("\nList of blank media:{}\n".format(", ".join(results["BLANK_MEDIA_FILELIST"])))
 
     def update_docker_image_jobs(self, docker_job_json: Dict):
         """
@@ -169,7 +199,7 @@ class EvalFramework:
                                                       '-t', self.file_type, '-')
 
         end_time = time.time()
-        
+
         if self.verbose:
             if self.detection_type is not None:
                 tracks = self._get_media_tracks(output_obj)
@@ -187,28 +217,48 @@ class EvalFramework:
         job_id = str(job_props_list)
 
         if image_id not in self.container_dict:
-            
-            if self.cpu:
-                command = ['docker', 'run', '--runtime=runc', '--rm', *env_params, '-d', image_name, '-d']
-            else:
-                command = ['docker', 'run', '--rm', *env_params, '-d', image_name, '-d']
-            
-            if self.sudo:
-                command = ['sudo'] + command 
-            
-                
-                
-            if self.verbose:
-                str_command = [str(x) for x in command]
-                print('Starting test container with command: ', shlex.join(str_command))
-            proc = subprocess.run(command, stdout=subprocess.PIPE, check=True)
-            container_id = proc.stdout.strip()
-            self.container_dict[image_id] = (container_id, job_id)
+            self.start_container(image_id, job_id, job_dict, env_params, image_name)
 
-            print("\n\n"+"="*80)
-            if self.dummy_jobs:
-                print('\nRunning new dummy job for container: ', container_id)
-                self._run_dummy_job_container(container_id, job_dict)
+
+    def start_container(self, image_id, job_id, job_dict, env_params, image_name):
+        if self.cpu:
+            command = ['docker', 'run', '--runtime=runc', '--rm', *env_params, '-d', image_name, '-d']
+        else:
+            command = ['docker', 'run', '--rm', *env_params, '-d', image_name, '-d']
+        if self.sudo:
+            command = ['sudo'] + command
+        if self.verbose:
+            print('Starting test container with command: ', shlex.join(command))
+        proc = subprocess.run(command, stdout=subprocess.PIPE, check=True)
+        container_id = proc.stdout.strip()
+        self.container_dict[image_id] = (container_id, job_id, job_dict, env_params, image_name)
+
+        print("\n\n"+"="*80)
+        if self.dummy_jobs:
+            print('\nRunning new dummy job for container: ', container_id)
+            self._run_dummy_job_container(container_id, job_dict)
+
+    def stop_container(self, container_key):
+        if self.sudo:
+            command = ('sudo', 'docker', 'stop', self.container_dict[container_key][0])
+        else:
+            command = ('docker', 'stop', self.container_dict[container_key][0])
+        if self.verbose:
+            str_command = [str(x) for x in command]
+            print('Stopping test container with command: ', shlex.join(str_command))
+        subprocess.run(command, check=True)
+
+
+    def stop_and_restart_container(self, container_key):
+        self.stop_container(container_key)
+
+        job_id = self.container_dict[container_key][1]
+        job_dict = self.container_dict[container_key][2]
+        env_params = self.container_dict[container_key][3]
+        image_name = self.container_dict[container_key][4]
+
+        self.start_container(container_key, job_id, job_dict, env_params, image_name)
+
 
     def _shut_down_all_containers(self):
         for container_key in self.container_dict:
@@ -221,12 +271,16 @@ class EvalFramework:
                 print('Stopping test container with command: ', shlex.join(str_command))
             subprocess.run(command, check=True)
 
+    def symlink_file(media, out_dir):
+        out_media = os.path.join(out_dir, os.path.basename(media))
+        os.symlink(media, out_media)
+
     def _process_media(self,
                        job_name: str,
                        media_list: List[str],
                        job_props_dict: Dict[str, str],
                        docker_env_dict: Dict[str, str],
-                       container_id: str):
+                       image_id: str):
 
         if self.verbose:
             print("Found {} files.".format(len(media_list)))
@@ -243,14 +297,39 @@ class EvalFramework:
             index += 1
             if self.verbose:
                 print("\nProcessing file {}: {}".format(index, media))
-            start_time = time.time()
+            successful_run = False
+            output_obj = None
+            for i in range(self.repeat_run):
+                container_id = self.container_dict[image_id][0]
+                start_time = time.time()
+                try:
+                    output_obj = self._run_cli_runner_stdin_media(container_id,
+                                                                job_props_dict,
+                                                                docker_env_dict,
+                                                                media,
+                                                                '-t', self.file_type, '-')
 
-            output_obj = self._run_cli_runner_stdin_media(container_id,
-                                                          job_props_dict,
-                                                          docker_env_dict,
-                                                          media,
-                                                          '-t', self.file_type, '-')
-            end_time = time.time()
+                except ValueError:
+                    end_time = time.time()
+                    logging.exception("message")
+                    print("\nError Processing file {}: {}".format(index, media))
+                    print("Run time: ", str(end_time - start_time))
+                    self.stop_and_restart_container(image_id)
+                    continue
+                successful_run = True
+                end_time = time.time()
+                break
+
+            if successful_run:
+                self.metrics[job_name]['SUCCESSFUL_RUNS'] += 1
+                self.metrics[job_name]['RUNTIME'] += end_time - start_time
+            else:
+                self.metrics[job_name]['FAILED_RUNS'] += 1
+                self.metrics[job_name]['FAILED_MEDIA_RUNTIME'] += end_time - start_time
+                self.metrics[job_name]['FAILED_MEDIA_FILELIST'].append(media)
+                if self.fail_media is not None:
+                    self.symlink_file(media, self.fail_media)
+
 
             if self.verbose:
                 if self.detection_type is not None:
@@ -258,18 +337,31 @@ class EvalFramework:
                     print("Found detections: ", len(tracks))
                 print("Run time: ", str(end_time - start_time))
 
+            if output_obj is None:
+                self.metrics[job_name]['BLANK_OUTPUT'] += 1
+                self.metrics[job_name]['BLANK_MEDIA_FILELIST'].append(media)
+                if self.blank_media is not None:
+                    self.symlink_file(media, self.blank_media)
+                print("Found no detections: ", len(tracks))
+                print("Run time: ", str(end_time - start_time))
+                continue
+
             if self.output_dir is not None:
                 os.makedirs(out_dir, exist_ok=True)
                 output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0])
                 with open('{}.json'.format(output_path), 'w') as fp:
-                    output_obj["media"][0]["path"] = media
+                    if "media" in output_obj:
+                        output_obj["media"][0]["path"] = media
+                    else:
+                        print("Error: Media path not specified in output JSON, adding description.")
+                        output_obj["media"] = [{"path": media}]
                     json.dump(output_obj, fp, indent=4, sort_keys=True)
 
         runtime_end = time.time()
         print("\nRun {} complete. Total image processing time: {} seconds.\n\n".format(job_name,
                                                                                        runtime_end - runtime_start))
         if self.out_metrics is not None:
-            self.metrics[job_name] = {"Runtime": runtime_end - runtime_start}
+            self.metrics[job_name]["TOTAL_RUNTIME"] =  runtime_end - runtime_start
 
     def _run_cli_runner_stdin_media(self,
                                     container_id: str,
@@ -291,14 +383,10 @@ class EvalFramework:
                                                  *runner_args: str) -> Dict[str, Any]:
         env_params = (f'-e{k}={v}' for k, v in env_dict.items())
         job_props = (f'-P{k}={v}' for k, v in job_props_dict.items())
-        
-        
 
         command = ['docker', 'exec', '-i', *env_params, container_id, 'runner', *runner_args, *job_props]
-            
         if self.sudo:
             command = ['sudo'] + command
-        
         if self.verbose:
             str_command = [str(x) for x in command]
             print('Running job with command: ', shlex.join(str_command))
@@ -365,6 +453,9 @@ def main():
                        seed=args.seed,
                        sudo=args.sudo,
                        cpu=args.cpu,
+                       fail_media = args.fail_media,
+                       blank_media = args.blank_media,
+                       repeat_run=args.repeat_run,
                        ) as evaluator:
         evaluator.process_media_jobs(media_list)
         evaluator.generate_summary()
@@ -384,7 +475,7 @@ def main():
 def add_common_options(parser):
     parser.add_argument('--out-labels', default=None,
                         help='Path to store output JSON results. If left blank no JSONs are created.')
-                        
+
     parser.add_argument('--cpu', dest='cpu', default=False, action='store_true',
                         help='Set runtime to runc.')
 
@@ -409,7 +500,19 @@ def add_common_options(parser):
     parser.add_argument('--out-metrics', dest='out_metrics', default=None,
                         help='Specify output filename for evaluation and runtime metrics. '
                              'If left blank no metrics file will be generated.')
-    
+
+    parser.add_argument('--out-failed-media', dest='fail_media', default=None,
+                        help='Specify optional directory for failed media. '
+                        'Any media runs that consistently produce a system error are softlinked here.')
+
+    parser.add_argument('--out-blank-media', dest='blank_media', default=None,
+                        help='Specify optional directory for blank media. '
+                        'Any media runs that produce an empty JSON are softlinked here.')
+
+    parser.add_argument('--repeat-failed-runs', dest='repeat_run', default=10,
+                        help='Specify number of times a container should be restarted on a failed run. '
+                        'By default the evaluator will attempt to restart a run ten times.')
+
     parser.add_argument('--detection-type', dest='detection_type', default=None,
                         help='Specifies detection type for the given tracks. '
                              'If left blank no track metrics are reported.')
