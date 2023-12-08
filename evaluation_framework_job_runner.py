@@ -69,11 +69,13 @@ class EvalFramework:
                  fail_media: str = None,
                  blank_media: str = None,
                  seed: int = 51,
-                 cpu: bool = False
-                 disable_shutdown: bool = False
+                 cpu: bool = False,
+                 disable_shutdown: bool = False,
+                 repeat_forever: bool = False,
                  ):
 
         self.disable_shutdown = disable_shutdown
+        self.repeat_forever = repeat_forever
         self.repeat_run = repeat_run
         self.fail_media = fail_media
         self.blank_media = blank_media
@@ -297,70 +299,83 @@ class EvalFramework:
         if self.output_dir is not None:
             out_dir = os.path.join(self.output_dir, job_name + "_" +
                                    dataset_start_time.strftime("%Y_%m_%d-%I_%M_%S_%p"))
+        while True:
+            for media in media_list:
+                index += 1
+                if self.verbose:
+                    print("\nProcessing file {}: {}".format(index, media))
+                successful_run = False
+                output_obj = None
+                for i in range(self.repeat_run):
+                    container_id = self.container_dict[image_id][0]
+                    start_time = time.time()
+                    try:
+                        output_obj = self._run_cli_runner_stdin_media(container_id,
+                                                                    job_props_dict,
+                                                                    docker_env_dict,
+                                                                    media,
+                                                                    '-t', self.file_type, '-')
 
-        for media in media_list:
-            index += 1
-            if self.verbose:
-                print("\nProcessing file {}: {}".format(index, media))
-            successful_run = False
-            output_obj = None
-            for i in range(self.repeat_run):
-                container_id = self.container_dict[image_id][0]
-                start_time = time.time()
-                try:
-                    output_obj = self._run_cli_runner_stdin_media(container_id,
-                                                                job_props_dict,
-                                                                docker_env_dict,
-                                                                media,
-                                                                '-t', self.file_type, '-')
-
-                except ValueError:
+                    except ValueError:
+                        end_time = time.time()
+                        logging.exception("message")
+                        print("\nError Processing file {}: {}".format(index, media))
+                        print("Run time: ", str(end_time - start_time))
+                        self.stop_and_restart_container(image_id)
+                        continue
+                    successful_run = True
                     end_time = time.time()
-                    logging.exception("message")
-                    print("\nError Processing file {}: {}".format(index, media))
+                    break
+
+                if successful_run:
+                    self.metrics[job_name]['SUCCESSFUL_RUNS'] += 1
+                    self.metrics[job_name]['RUNTIME'] += end_time - start_time
+                else:
+                    self.metrics[job_name]['FAILED_RUNS'] += 1
+                    self.metrics[job_name]['FAILED_MEDIA_RUNTIME'] += end_time - start_time
+                    self.metrics[job_name]['FAILED_MEDIA_FILELIST'].append(media)
+                    if self.fail_media is not None:
+                        self.symlink_file(media, self.fail_media)
+
+
+                if self.verbose:
+                    if self.detection_type is not None:
+                        tracks = self._get_media_tracks(output_obj)
+                        print("Found detections: ", len(tracks))
                     print("Run time: ", str(end_time - start_time))
-                    self.stop_and_restart_container(image_id)
+
+                if output_obj is None:
+                    self.metrics[job_name]['BLANK_OUTPUT'] += 1
+                    self.metrics[job_name]['BLANK_MEDIA_FILELIST'].append(media)
+                    if self.blank_media is not None:
+                        self.symlink_file(media, self.blank_media)
+                    print("Found no detections: ", len(tracks))
+                    print("Run time: ", str(end_time - start_time))
                     continue
-                successful_run = True
-                end_time = time.time()
+
+
+                # TODO: Modify to access and also store output info:
+                # Output JSON is held in this variable: output_obj
+                # Below the output JSON gets saved to the output directory.
+                # Updated to allow for repeats.
+                if self.output_dir is not None:
+                    os.makedirs(out_dir, exist_ok=True)
+                    output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0])
+                    if self.repeat_forever:
+                        # Need to mark output job files with a time label, as the same media gets reprocessed.
+                        time_str = datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p")
+                        output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media)+'_date_'+time_str)[0])
+
+                    with open('{}.json'.format(output_path), 'w') as fp:
+                        if "media" in output_obj:
+                            output_obj["media"][0]["path"] = media
+                        else:
+                            print("Error: Media path not specified in output JSON, adding description.")
+                            output_obj["media"] = [{"path": media}]
+                        json.dump(output_obj, fp, indent=4, sort_keys=True)
+
+            if not self.repeat_forever:
                 break
-
-            if successful_run:
-                self.metrics[job_name]['SUCCESSFUL_RUNS'] += 1
-                self.metrics[job_name]['RUNTIME'] += end_time - start_time
-            else:
-                self.metrics[job_name]['FAILED_RUNS'] += 1
-                self.metrics[job_name]['FAILED_MEDIA_RUNTIME'] += end_time - start_time
-                self.metrics[job_name]['FAILED_MEDIA_FILELIST'].append(media)
-                if self.fail_media is not None:
-                    self.symlink_file(media, self.fail_media)
-
-
-            if self.verbose:
-                if self.detection_type is not None:
-                    tracks = self._get_media_tracks(output_obj)
-                    print("Found detections: ", len(tracks))
-                print("Run time: ", str(end_time - start_time))
-
-            if output_obj is None:
-                self.metrics[job_name]['BLANK_OUTPUT'] += 1
-                self.metrics[job_name]['BLANK_MEDIA_FILELIST'].append(media)
-                if self.blank_media is not None:
-                    self.symlink_file(media, self.blank_media)
-                print("Found no detections: ", len(tracks))
-                print("Run time: ", str(end_time - start_time))
-                continue
-
-            if self.output_dir is not None:
-                os.makedirs(out_dir, exist_ok=True)
-                output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0])
-                with open('{}.json'.format(output_path), 'w') as fp:
-                    if "media" in output_obj:
-                        output_obj["media"][0]["path"] = media
-                    else:
-                        print("Error: Media path not specified in output JSON, adding description.")
-                        output_obj["media"] = [{"path": media}]
-                    json.dump(output_obj, fp, indent=4, sort_keys=True)
 
         runtime_end = time.time()
         print("\nRun {} complete. Total image processing time: {} seconds.\n\n".format(job_name,
@@ -462,6 +477,7 @@ def main():
                        blank_media = args.blank_media,
                        repeat_run = args.repeat_run,
                        disable_shutdown = args.disable_shutdown,
+                       repeat_forever = args.repeat_jobs_forever,
                        ) as evaluator:
         evaluator.process_media_jobs(media_list)
         evaluator.generate_summary()
@@ -481,6 +497,9 @@ def main():
 def add_common_options(parser):
     parser.add_argument('--out-labels', default=None,
                         help='Path to store output JSON results. If left blank no JSONs are created.')
+
+    parser.add_argument('--repeat-jobs-forever', action='store_true', default=False,
+                        help='If set, the framework will loop FOREVER on available media. Runs will have a time-label added')
 
     parser.add_argument('--disable-shutdown', action='store_true', default=False,
                         help='If set, disable shutdown of MPF Docker components.')
