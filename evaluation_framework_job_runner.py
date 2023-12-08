@@ -70,8 +70,10 @@ class EvalFramework:
                  blank_media: str = None,
                  seed: int = 51,
                  cpu: bool = False
+                 disable_shutdown: bool = False
                  ):
 
+        self.disable_shutdown = disable_shutdown
         self.repeat_run = repeat_run
         self.fail_media = fail_media
         self.blank_media = blank_media
@@ -231,6 +233,8 @@ class EvalFramework:
             print('Starting test container with command: ', shlex.join(command))
         proc = subprocess.run(command, stdout=subprocess.PIPE, check=True)
         container_id = proc.stdout.strip()
+
+        print(f'Container ID : {container_id}')
         self.container_dict[image_id] = (container_id, job_id, job_dict, env_params, image_name)
 
         print("\n\n"+"="*80)
@@ -261,15 +265,16 @@ class EvalFramework:
 
 
     def _shut_down_all_containers(self):
-        for container_key in self.container_dict:
-            if self.sudo:
-                command = ('sudo', 'docker', 'stop', self.container_dict[container_key][0])
-            else:
-                command = ('docker', 'stop', self.container_dict[container_key][0])
-            if self.verbose:
-                str_command = [str(x) for x in command]
-                print('Stopping test container with command: ', shlex.join(str_command))
-            subprocess.run(command, check=True)
+        if not self.disable_shutdown:
+            for container_key in self.container_dict:
+                if self.sudo:
+                    command = ('sudo', 'docker', 'stop', self.container_dict[container_key][0])
+                else:
+                    command = ('docker', 'stop', self.container_dict[container_key][0])
+                if self.verbose:
+                    str_command = [str(x) for x in command]
+                    print('Stopping test container with command: ', shlex.join(str_command))
+                subprocess.run(command, check=True)
 
     def symlink_file(media, out_dir):
         out_media = os.path.join(out_dir, os.path.basename(media))
@@ -455,7 +460,8 @@ def main():
                        cpu=args.cpu,
                        fail_media = args.fail_media,
                        blank_media = args.blank_media,
-                       repeat_run=args.repeat_run,
+                       repeat_run = args.repeat_run,
+                       disable_shutdown = args.disable_shutdown,
                        ) as evaluator:
         evaluator.process_media_jobs(media_list)
         evaluator.generate_summary()
@@ -475,6 +481,9 @@ def main():
 def add_common_options(parser):
     parser.add_argument('--out-labels', default=None,
                         help='Path to store output JSON results. If left blank no JSONs are created.')
+
+    parser.add_argument('--disable-shutdown', action='store_true', default=False,
+                        help='If set, disable shutdown of MPF Docker components.')
 
     parser.add_argument('--cpu', dest='cpu', default=False, action='store_true',
                         help='Set runtime to runc.')
