@@ -497,7 +497,7 @@ def add_common_options(parser):
     parser.add_argument('--run-dummy-jobs', dest='dummy_jobs', default=False, action='store_true',
                         help='Run a dummy job for each unique docker setup.')
 
-    parser.add_argument('--out-metrics', dest='out_metrics', default=None,
+    parser.add_argument('--out-metrics', dest='out_metrics', default="metrics_run.txt",
                         help='Specify output filename for evaluation and runtime metrics. '
                              'If left blank no metrics file will be generated.')
 
