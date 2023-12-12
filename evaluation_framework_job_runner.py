@@ -299,9 +299,12 @@ class EvalFramework:
         if self.output_dir is not None:
             out_dir = os.path.join(self.output_dir, job_name + "_" +
                                    dataset_start_time.strftime("%Y_%m_%d-%I_%M_%S_%p"))
+        run_count = 0
+        fail_count = 0
         while True:
             for media in media_list:
                 index += 1
+                run_count += 1
                 if self.verbose:
                     print("\nProcessing file {}: {}".format(index, media))
                 successful_run = False
@@ -341,8 +344,8 @@ class EvalFramework:
                 if self.verbose:
                     if self.detection_type is not None:
                         tracks = self._get_media_tracks(output_obj)
-                        print("Found detections: ", len(tracks))
-                    print("Run time: ", str(end_time - start_time))
+                        print("Found detections: ", len(tracks[0]))
+                        print("Run time: ", str(end_time - start_time))
 
                 if output_obj is None:
                     self.metrics[job_name]['BLANK_OUTPUT'] += 1
@@ -353,6 +356,13 @@ class EvalFramework:
                     print("Run time: ", str(end_time - start_time))
                     continue
 
+                tracks = self._get_media_tracks(output_obj)
+                for track in tracks:
+                    detections = track['detections']
+                    print(f'Run #{run_count}: Number of detections = {len(detections)}')
+                    if len(detections) < 1:
+                        fail_count += 1
+                        print(f"FAILED: found {len(detections)} detections ==> {fail_count} failures in {run_count} runs")
 
                 # TODO: Modify to access and also store output info:
                 # Output JSON is held in this variable: output_obj
@@ -378,7 +388,8 @@ class EvalFramework:
                 break
 
         runtime_end = time.time()
-        print("\nRun {} complete. Total image processing time: {} seconds.\n\n".format(job_name,
+        if self.verbose:
+            print("\nRun {} complete. Total image processing time: {} seconds.\n\n".format(job_name,
                                                                                        runtime_end - runtime_start))
         if self.out_metrics is not None:
             self.metrics[job_name]["TOTAL_RUNTIME"] =  runtime_end - runtime_start
