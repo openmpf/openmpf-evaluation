@@ -374,7 +374,7 @@ class EvalFramework:
                     if self.repeat_forever:
                         # Need to mark output job files with a time label, as the same media gets reprocessed.
                         time_str = datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p")
-                        output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media)+'_date_'+time_str)[0])
+                        output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0]+'_date_'+time_str)
 
                     with open('{}.json'.format(output_path), 'w') as fp:
                         if "media" in output_obj:
