@@ -72,6 +72,7 @@ class EvalFramework:
                  cpu: bool = False,
                  disable_shutdown: bool = False,
                  repeat_forever: bool = False,
+                 storage_limit: int = 1000,
                  ):
 
         self.disable_shutdown = disable_shutdown
@@ -79,6 +80,7 @@ class EvalFramework:
         self.repeat_run = repeat_run
         self.fail_media = fail_media
         self.blank_media = blank_media
+        self.storage_limit = storage_limit
 
 
         self.detection_type = detection_type
@@ -299,14 +301,9 @@ class EvalFramework:
         if self.output_dir is not None:
             out_dir = os.path.join(self.output_dir, job_name + "_" +
                                    dataset_start_time.strftime("%Y_%m_%d-%I_%M_%S_%p"))
-
-        # NOTE: store_limit controls how many output JSONs are generated.
-        # Only the last X JSONs are kept, where X is store_limit value.
-        # If set to a non-positive value ALL outputs are stored w/ time labels.
-        # WARNING: This could quickly fill up your local storage space!
-        store_limit = 1000
         run_count = 0
         fail_count = 0
+        file_tracker = []
         file_counter = 0
         while True:
             for media in media_list:
@@ -351,7 +348,9 @@ class EvalFramework:
                 if self.verbose:
                     if self.detection_type is not None:
                         tracks = self._get_media_tracks(output_obj)
-                        print("Found detections: ", len(tracks[0]))
+                        print("Found tracks: ", len(tracks))
+                        for i in range(len(tracks)):\
+                            print(f"Detections in track {i}: ", len(tracks[i]['detections']))
                         print("Run time: ", str(end_time - start_time))
 
                 if output_obj is None:
@@ -376,16 +375,20 @@ class EvalFramework:
                 # Below the output JSON gets saved to the output directory.
                 # Updated to allow for repeats.
                 if self.output_dir is not None:
+                    file_counter += 1
                     os.makedirs(out_dir, exist_ok=True)
                     output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0])
                     if self.repeat_forever:
-                        if store_limit > 0:
+                        if self.storage_limit < 0:
                             # Mark output job files with a time label, as the same media gets reprocessed.
-                            time_str = datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p")
+                            time_str = datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p") + f"_count_{file_counter}"
                             output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0]+'_date_'+time_str)
                         else:
-                            file_counter = (file_counter + 1)%store_limit
-                            output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0]+store_limit)
+                            time_str = datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p") + f"_count_{file_counter}"
+                            if len(file_tracker) >= self.storage_limit and file_tracker:
+                                os.remove(file_tracker.pop(0)+'.json')
+                            output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0]+'_date_'+time_str)
+                            file_tracker.append(output_path)
 
                     with open('{}.json'.format(output_path), 'w') as fp:
                         if "media" in output_obj:
@@ -500,6 +503,7 @@ def main():
                        repeat_run = args.repeat_run,
                        disable_shutdown = args.disable_shutdown,
                        repeat_forever = args.repeat_jobs_forever,
+                       storage_limit = args.json_storage_limit,
                        ) as evaluator:
         evaluator.process_media_jobs(media_list)
         evaluator.generate_summary()
@@ -522,6 +526,9 @@ def add_common_options(parser):
 
     parser.add_argument('--repeat-jobs-forever', action='store_true', default=False,
                         help='If set, the framework will loop FOREVER on available media. Runs will have a time-label added')
+
+    parser.add_argument('--json-storage-limit', type=int, default=1000,
+                        help='Specifies number of JSONs to store when repeating jobs on a permanent loop. Negative values will store ALL JSONs generated. Default 1000 JSONs to keep.')
 
     parser.add_argument('--disable-shutdown', action='store_true', default=False,
                         help='If set, disable shutdown of MPF Docker components.')
