@@ -371,8 +371,13 @@ class EvalFramework:
                 if self.output_dir is not None:
                     os.makedirs(out_dir, exist_ok=True)
                     output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0])
-                    if self.repeat_forever:
-                        # Need to mark output job files with a time label, as the same media gets reprocessed.
+
+
+                    # NOTE: If manual toggle to true, ALL run outputs are stored for every run in repeat_forever MODE
+                    # From testing, this will create a huge output folder very quickly.
+                    store_everything = False
+                    if self.repeat_forever and store_everything:
+                        # Mark output job files with a time label, as the same media gets reprocessed.
                         time_str = datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p")
                         output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0]+'_date_'+time_str)
 
