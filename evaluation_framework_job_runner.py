@@ -347,7 +347,7 @@ class EvalFramework:
                 self.metrics[job_name]['BLANK_MEDIA_FILELIST'].append(media)
                 if self.blank_media is not None:
                     self.symlink_file(media, self.blank_media)
-                print("Found no detections: ", len(tracks))
+                print("Found no detections: Empty JSON output")
                 print("Run time: ", str(end_time - start_time))
                 continue
 
