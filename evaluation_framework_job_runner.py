@@ -373,13 +373,20 @@ class EvalFramework:
                     output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0])
 
 
-                    # NOTE: If manual toggle to true, ALL run outputs are stored for every run in repeat_forever MODE
-                    # From testing, this will create a huge output folder very quickly.
-                    store_everything = False
-                    if self.repeat_forever and store_everything:
-                        # Mark output job files with a time label, as the same media gets reprocessed.
-                        time_str = datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p")
-                        output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0]+'_date_'+time_str)
+                    # NOTE: store_limit controls how many output JSONs are generated.
+                    # Only the last X JSONs are kept, where X is store_limit value.
+                    # If set to a non-positive value ALL outputs are stored w/ time labels.
+                    # WARNING: This could quickly fill up your local storage space!
+                    store_limit = 1000
+                    file_counter = 0
+                    if self.repeat_forever:
+                        if store_limit > 0:
+                            # Mark output job files with a time label, as the same media gets reprocessed.
+                            time_str = datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p")
+                            output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0]+'_date_'+time_str)
+                        else:
+                            file_counter = (file_counter + 1)%store_limit
+                            output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0]+store_limit)
 
                     with open('{}.json'.format(output_path), 'w') as fp:
                         if "media" in output_obj:
