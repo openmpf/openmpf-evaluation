@@ -299,8 +299,15 @@ class EvalFramework:
         if self.output_dir is not None:
             out_dir = os.path.join(self.output_dir, job_name + "_" +
                                    dataset_start_time.strftime("%Y_%m_%d-%I_%M_%S_%p"))
+
+        # NOTE: store_limit controls how many output JSONs are generated.
+        # Only the last X JSONs are kept, where X is store_limit value.
+        # If set to a non-positive value ALL outputs are stored w/ time labels.
+        # WARNING: This could quickly fill up your local storage space!
+        store_limit = 1000
         run_count = 0
         fail_count = 0
+        file_counter = 0
         while True:
             for media in media_list:
                 index += 1
@@ -352,7 +359,7 @@ class EvalFramework:
                     self.metrics[job_name]['BLANK_MEDIA_FILELIST'].append(media)
                     if self.blank_media is not None:
                         self.symlink_file(media, self.blank_media)
-                    print("Found no detections: ", len(tracks))
+                    print("Found no detections: Empty output JSON.")
                     print("Run time: ", str(end_time - start_time))
                     continue
 
@@ -371,14 +378,6 @@ class EvalFramework:
                 if self.output_dir is not None:
                     os.makedirs(out_dir, exist_ok=True)
                     output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0])
-
-
-                    # NOTE: store_limit controls how many output JSONs are generated.
-                    # Only the last X JSONs are kept, where X is store_limit value.
-                    # If set to a non-positive value ALL outputs are stored w/ time labels.
-                    # WARNING: This could quickly fill up your local storage space!
-                    store_limit = 1000
-                    file_counter = 0
                     if self.repeat_forever:
                         if store_limit > 0:
                             # Mark output job files with a time label, as the same media gets reprocessed.
