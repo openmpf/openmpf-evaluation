@@ -363,10 +363,12 @@ class EvalFramework:
                     continue
 
                 tracks = self._get_media_tracks(output_obj)
+                store_failure = False
                 for track in tracks:
                     detections = track['detections']
                     print(f'Run #{run_count}: Number of detections = {len(detections)}')
                     if len(detections) < 1:
+                        store_failure = True
                         fail_count += 1
                         print(f"FAILED: found {len(detections)} detections ==> {fail_count} failures in {run_count} runs")
 
@@ -378,7 +380,10 @@ class EvalFramework:
                     file_counter += 1
                     os.makedirs(out_dir, exist_ok=True)
                     output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0])
-                    if self.repeat_forever:
+                    if store_failure:
+                        time_str = datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p") + f"_count_{file_counter}_FAILED_RUN"
+                        output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0]+'_date_'+time_str)
+                    elif self.repeat_forever:
                         if self.storage_limit < 0:
                             # Mark output job files with a time label, as the same media gets reprocessed.
                             time_str = datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p") + f"_count_{file_counter}"
@@ -389,7 +394,6 @@ class EvalFramework:
                                 os.remove(file_tracker.pop(0)+'.json')
                             output_path = os.path.join(out_dir, os.path.splitext(os.path.basename(media))[0]+'_date_'+time_str)
                             file_tracker.append(output_path)
-
                     with open('{}.json'.format(output_path), 'w') as fp:
                         if "media" in output_obj:
                             output_obj["media"][0]["path"] = media
