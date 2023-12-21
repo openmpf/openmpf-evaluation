@@ -364,13 +364,20 @@ class EvalFramework:
 
                 tracks = self._get_media_tracks(output_obj)
                 store_failure = False
-                for track in tracks:
-                    detections = track['detections']
-                    print(f'Run #{run_count}: Number of detections = {len(detections)}')
+                if tracks:
+                    for track in tracks:
+                        detections = track['detections']
+                        print(f'Run #{run_count}: Number of detections = {len(detections)}')
+                        if len(detections) < 1:
+                            store_failure = True
+                            fail_count += 1
+                            print(f"FAILED: found {len(detections)} detections ==> {fail_count} failures in {run_count} runs")
+                else:
+                    print(f'Warning no tracks found!')
                     if len(detections) < 1:
                         store_failure = True
                         fail_count += 1
-                        print(f"FAILED: found {len(detections)} detections ==> {fail_count} failures in {run_count} runs")
+                        print(f"FAILED: found 0 detections ==> {fail_count} failures in {run_count} runs")
 
                 # TODO: Modify to access and also store output info:
                 # Output JSON is held in this variable: output_obj
