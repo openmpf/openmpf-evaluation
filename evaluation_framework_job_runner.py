@@ -374,10 +374,9 @@ class EvalFramework:
                             print(f"FAILED: found {len(detections)} detections ==> {fail_count} failures in {run_count} runs")
                 else:
                     print(f'Warning no tracks found!')
-                    if len(detections) < 1:
-                        store_failure = True
-                        fail_count += 1
-                        print(f"FAILED: found 0 detections ==> {fail_count} failures in {run_count} runs")
+                    store_failure = True
+                    fail_count += 1
+                    print(f"FAILED: found 0 detections ==> {fail_count} failures in {run_count} runs")
 
                 # TODO: Modify to access and also store output info:
                 # Output JSON is held in this variable: output_obj
