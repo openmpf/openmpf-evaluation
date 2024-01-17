@@ -38,6 +38,33 @@ import logging
 #from tqdm import tqdm
 from xml.etree import ElementTree
 
+import dataclasses
+
+@dataclasses.dataclass
+class Rect:
+    x: float
+    y: float
+    width: float
+    height: float
+
+    def intersection_area(self, other):
+        w_diff = min(self.x + self.width, other.x + other.width) - max(self.x, other.x)
+        if w_diff <= 0:
+            return 0
+        h_diff = min(self.y + self.height, other.y + other.height) - max(self.y, other.y)
+        if h_diff <= 0:
+            return 0
+        return w_diff * h_diff
+
+    def area(self):
+        return self.width * self.height
+
+
+def iou(det1, det2):
+    intersection_area = det1.intersection_area(det2)
+    return intersection_area / (det1.area() + det2.area() - intersection_area)
+
+
 class EvalFramework:
     EVAL_JSON_JOB_RUNS = "jobRuns"
     EVAL_JSON_JOB_NAME = "jobName"
@@ -47,6 +74,10 @@ class EvalFramework:
 
     dummy_data_path = os.path.dirname(os.path.abspath(__file__))
     EVAL_DUMMY_FILE = dummy_data_path + "/data/images/meds-af-S419-01_40deg.jpg"
+
+    # [x1,y1,x2,y2] top-left and bottom-right coordinates
+    gollum_bounding_box = Rect(134, 4, 105, 139)
+    gollum_confidence = 0.8457
 
     def __enter__(self):
         return self
@@ -99,6 +130,14 @@ class EvalFramework:
         self.metrics = {}
         self.cpu = cpu
         self.docker_job_json = docker_job_json
+        
+        print(f'docker_job_json: {docker_job_json}')
+        job_runs = docker_job_json['jobRuns']
+        print(f'job_runs = {job_runs}')
+        self.iou_threshold = job_runs[0]['iou_threshold']
+        print(f'iou_threshold = {self.iou_threshold}')
+        self.min_confidence_diff = job_runs[0]['min_confidence_diff']
+        print(f'min_confidence_diff = {self.min_confidence_diff}')
 
         if self.blank_media is not None:
             os.makedirs(self.blank_media, exist_ok=True)
@@ -372,6 +411,17 @@ class EvalFramework:
                             store_failure = True
                             fail_count += 1
                             print(f"FAILED: found {len(detections)} detections ==> {fail_count} failures in {run_count} runs")
+                        else:
+                            for detection in detections:
+                                bounding_box = Rect(detection['x'], detection['y'], detection['width'], detection['height'])
+                                measured_iou = iou(self.gollum_bounding_box, bounding_box)
+                                print(f'iou = {measured_iou}')
+                                if measured_iou < self.iou_threshold:
+                                    print(f'FAILED: iou {iou} < {self.threshold}')
+                                confidence_diff = abs(detection['confidence'] - self.gollum_confidence)
+                                if confidence_diff > self.min_confidence_diff:
+                                    print(f'FAILED: confidence {detection["confidence"]} diff {confidence_diff}')
+                                
                 else:
                     print(f'Warning no tracks found!')
                     store_failure = True
@@ -591,6 +641,7 @@ def add_common_options(parser):
                         help='Enable a follow-up run using FiftyOne.'
                              'Specify job parameters using the docker_image_json file.')
 
+                                                 
     parser.set_defaults(verbose=False)
 
 
