@@ -69,7 +69,7 @@ class EvalFramework:
                  fail_media: str = None,
                  blank_media: str = None,
                  seed: int = 51,
-                 cpu: bool = False
+                 cpu: bool = False,
                  disable_shutdown: bool = False
                  ):
 
