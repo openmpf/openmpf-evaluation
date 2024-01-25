@@ -44,6 +44,7 @@ class EvalFramework:
     EVAL_JSON_DOCKER_IMAGE = "dockerImage"
     EVAL_JSON_JOB_PROPS = "jobProperties"
     EVAL_JSON_DOCKER_ENV = "dockerEnvironment"
+    EVAL_JSON_DOCKER_SETUP_PARAM = "dockerContainerSetupParameters"
 
     dummy_data_path = os.path.dirname(os.path.abspath(__file__))
     EVAL_DUMMY_FILE = dummy_data_path + "/data/images/meds-af-S419-01_40deg.jpg"
@@ -129,11 +130,12 @@ class EvalFramework:
 
             job_props_dict = job_entry.get(self.EVAL_JSON_JOB_PROPS, {})
             docker_env_dict = job_entry.get(self.EVAL_JSON_DOCKER_ENV, {})
-
-            env_params_list = [f'-e{k}={v}' for k, v in sorted(docker_env_dict.items())]
-            job_props_list = [f'-P{k}={v}' for k, v in sorted(job_props_dict.items())]
-            jobs_id_new = str(job_props_list)
-            image_id = docker_image.strip() + str(env_params_list)
+            docker_param_dict = job_entry.get(self.EVAL_JSON_DOCKER_SETUP_PARAM, {})
+            docker_params = [f'{k}={v}' for k, v in sorted(docker_param_dict.items())]
+            env_params = [f'-e{k}={v}' for k, v in sorted(docker_env_dict.items())]
+            job_props= [f'-P{k}={v}' for k, v in sorted(job_props_dict.items())]
+            image_id = docker_image.strip() + str(docker_params) + str(env_params)
+            jobs_id_new = str(job_props)
             container_id, jobs_id, *params = self.container_dict[image_id]
             if self.dummy_jobs and jobs_id_new != jobs_id:
                 print("\n\n" + "=" * 80)
@@ -187,8 +189,9 @@ class EvalFramework:
             for job_entry in docker_job_json[self.EVAL_JSON_JOB_RUNS]:
                 docker_image = job_entry[self.EVAL_JSON_DOCKER_IMAGE]
                 docker_env_dict = job_entry.get(self.EVAL_JSON_DOCKER_ENV, {})
+                docker_param_dict = job_entry.get(self.EVAL_JSON_DOCKER_SETUP_PARAM, {})
                 job_dict = job_entry.get(self.EVAL_JSON_JOB_PROPS, {})
-                self._set_up_containers(docker_image, docker_env_dict, job_dict)
+                self._set_up_containers(docker_image, docker_param_dict, docker_env_dict, job_dict)
 
             self.docker_job_list += docker_job_json[self.EVAL_JSON_JOB_RUNS]
 
@@ -210,32 +213,32 @@ class EvalFramework:
         print("Dummy run complete!")
         print("="*80, "\n")
 
-    def _set_up_containers(self, image_name: str, env_dict: Dict, job_dict: Dict):
-        env_params = (f'-e{k}={v}' for k, v in sorted(env_dict.items()))
-        env_params_list = [f'-e{k}={v}' for k, v in sorted(env_dict.items())]
-        job_props_list = [f'-P{k}={v}' for k, v in sorted(job_dict.items())]
+    def _set_up_containers(self, image_name: str, param_dict: Dict, env_dict: Dict, job_dict: Dict):
+        docker_params = [f'{k}={v}' for k, v in sorted(param_dict.items())]
+        env_params = [f'-e{k}={v}' for k, v in sorted(env_dict.items())]
+        job_props= [f'-P{k}={v}' for k, v in sorted(job_dict.items())]
 
-        image_id = image_name.strip() + str(env_params_list)
-        job_id = str(job_props_list)
-
+        image_id = image_name.strip() + str(docker_params) + str(env_params)
+        job_id = str(job_props)
         if image_id not in self.container_dict:
-            self.start_container(image_id, job_id, job_dict, env_params, image_name)
+            self.start_container(image_id, job_id, job_dict, docker_params, env_params, image_name)
 
 
-    def start_container(self, image_id, job_id, job_dict, env_params, image_name):
+    def start_container(self, image_id, job_id, job_dict, docker_params, env_params, image_name):
         if self.cpu:
-            command = ['docker', 'run', '--runtime=runc', '--rm', *env_params, '-d', image_name, '-d']
+            command = ['docker', 'run', '--runtime=runc', '--rm', *docker_params, *env_params, '-d', image_name, '-d']
         else:
-            command = ['docker', 'run', '--rm', *env_params, '-d', image_name, '-d']
+            command = ['docker', 'run', '--rm', *docker_params, *env_params, '-d', image_name, '-d']
         if self.sudo:
             command = ['sudo'] + command
         if self.verbose:
-            print('Starting test container with command: ', shlex.join(command))
+            str_command = [str(x) for x in command]
+            print('Starting test container with command: ', shlex.join(str_command))
         proc = subprocess.run(command, stdout=subprocess.PIPE, check=True)
         container_id = proc.stdout.strip()
 
         print(f'Container ID : {container_id}')
-        self.container_dict[image_id] = (container_id, job_id, job_dict, env_params, image_name)
+        self.container_dict[image_id] = (container_id, job_id, job_dict, docker_params, env_params, image_name)
 
         print("\n\n"+"="*80)
         if self.dummy_jobs:
@@ -258,10 +261,11 @@ class EvalFramework:
 
         job_id = self.container_dict[container_key][1]
         job_dict = self.container_dict[container_key][2]
-        env_params = self.container_dict[container_key][3]
-        image_name = self.container_dict[container_key][4]
+        docker_params = self.container_dict[container_key][3]
+        env_params = self.container_dict[container_key][4]
+        image_name = self.container_dict[container_key][5]
 
-        self.start_container(container_key, job_id, job_dict, env_params, image_name)
+        self.start_container(container_key, job_id, job_dict, docker_params, env_params, image_name)
 
 
     def _shut_down_all_containers(self):
