@@ -27,3 +27,7 @@
  https://github.com/voxel51/fiftyone
 
  --------------------------------------------------------------------------
+
+ The "NVIDIA/NeMo" project is licensed under the Apache 2.0 License.
+ Project Page: https://github.com/NVIDIA/NeMo
+ Modifications to data_explorer.py to convert audio files to .wav
